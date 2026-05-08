@@ -1,6 +1,6 @@
-// AnesFlow Service Worker — v4 (Reading Recommendations + Mobile UX)
-const CACHE_NAME = 'anesflow-v4';
-const CDN_CACHE = 'anesflow-cdn-v4';
+// AnesFlow Service Worker — v5 (Quick Entry + Reading Tracker + ABA Coverage)
+const CACHE_NAME = 'anesflow-v5';
+const CDN_CACHE = 'anesflow-cdn-v5';
 const PRECACHE_URLS = ['/', '/index.html', '/manifest.json', '/icons/icon-192.svg', '/icons/icon-512.svg'];
 
 self.addEventListener('install', e => {

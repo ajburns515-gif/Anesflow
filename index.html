@@ -691,6 +691,119 @@ const OPIOID_SPARING_AGENTS = [
   "Dexamethasone 4-8mg IV","Gabapentin 300-600mg PO pre-op","Celecoxib 400mg PO pre-op",
 ];
 
+// ─── QUICK ENTRY COMPONENTS ──────────────────────────────────────────────────
+const PMHx_QUICK=[
+  "HTN","DM2","CAD","CHF/HFrEF","Afib","OSA on CPAP","COPD","Asthma",
+  "CKD","ESRD on HD","CVA/TIA","PVD","Obesity (BMI>35)","GERD",
+  "Hypothyroidism","Hyperthyroidism","Prior DVT/PE","Cirrhosis",
+  "Chronic pain","Depression/Anxiety","Cancer","Coagulopathy","PONV hx",
+];
+const MEDS_QUICK=[
+  "Metoprolol","Lisinopril","Amlodipine","Atorvastatin","Aspirin 81mg",
+  "Warfarin","Eliquis (apixaban)","Xarelto (rivaroxaban)","Plavix (clopidogrel)",
+  "Metformin","Insulin glargine","Gabapentin","Opioids (chronic)","Furosemide",
+  "HCTZ","Omeprazole","Levothyroxine","Prednisone","SSRIs","ACE inhibitor",
+];
+const PRIOR_ANES_QUICK=[
+  "None / uneventful","Difficult laryngoscopy","Cannot mask ventilate",
+  "PONV","MH concern / family hx","Anaphylaxis / drug reaction",
+  "PDPH","Prolonged emergence","Awareness","Difficult IV access",
+];
+const LABS_WNL={na:"138",k:"4.0",cr:"1.0",hgb:"14",plt:"250",inr:"1.0",hr:"72",bp:"120/80",spo2:"99"};
+
+function QuickTags({value,onChange,tags}){
+  const isActive=(tag)=>(value||"").toLowerCase().includes(tag.toLowerCase());
+  const toggle=(tag)=>{
+    const cur=value||"";
+    if(isActive(tag)){
+      const esc=tag.replace(/[.*+?^${}()|[\]\\]/g,'\\$&');
+      const cleaned=cur.replace(new RegExp(',\\s*'+esc,'i'),'')
+        .replace(new RegExp(esc+',?\\s*','i'),'').trim().replace(/,\s*$/,'').trim();
+      onChange(cleaned);
+    }else{
+      onChange(cur?cur+", "+tag:tag);
+    }
+  };
+  return(
+    <div className="pill-wrap" style={{marginBottom:7}}>
+      {tags.map(t=><span key={t} className={`pill${isActive(t)?" on":""}`} style={{fontSize:10.5}} onClick={()=>toggle(t)}>{t}</span>)}
+    </div>
+  );
+}
+
+function StructuredLabs({value,onChange}){
+  const [f,setF]=useState({na:"",k:"",cr:"",hgb:"",plt:"",inr:"",hr:"",bp:"",spo2:""});
+  const [open,setOpen]=useState(false);
+  const compose=(d)=>{
+    const labs=[],vit=[];
+    if(d.na)labs.push(`Na ${d.na}`);if(d.k)labs.push(`K ${d.k}`);if(d.cr)labs.push(`Cr ${d.cr}`);
+    if(d.hgb)labs.push(`Hgb ${d.hgb}`);if(d.plt)labs.push(`Plt ${d.plt}`);if(d.inr)labs.push(`INR ${d.inr}`);
+    if(d.hr)vit.push(`HR ${d.hr}`);if(d.bp)vit.push(`BP ${d.bp}`);if(d.spo2)vit.push(`SpO2 ${d.spo2}%`);
+    return[...labs,...vit].join(', ');
+  };
+  const upd=(k,v)=>{const nf={...f,[k]:v};setF(nf);onChange(compose(nf));};
+  const wnl=()=>{setF(LABS_WNL);onChange(compose(LABS_WNL));};
+  const flds=[{k:"na",l:"Na"},{k:"k",l:"K"},{k:"cr",l:"Cr"},{k:"hgb",l:"Hgb"},{k:"plt",l:"Plt"},{k:"inr",l:"INR"},{k:"hr",l:"HR"},{k:"bp",l:"BP"},{k:"spo2",l:"SpO2%"}];
+  return(
+    <div>
+      <div style={{display:"flex",gap:6,marginBottom:6,flexWrap:"wrap"}}>
+        <button className="btn btn-ghost" onClick={()=>setOpen(o=>!o)} style={{fontSize:10,padding:"3px 10px"}}>{open?"▾ Grid":"▸ Grid"}</button>
+        <button className="btn btn-ghost" onClick={wnl} style={{fontSize:10,padding:"3px 10px",color:"var(--green)",borderColor:"rgba(52,211,153,0.3)"}}>✓ All WNL</button>
+      </div>
+      {open&&<div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:6,marginBottom:8,background:"rgba(0,0,0,0.2)",border:"1px solid var(--border)",borderRadius:"var(--r)",padding:10}}>
+        {flds.map(({k,l})=>(
+          <div key={k}>
+            <label style={{fontSize:9,color:"var(--text3)",fontFamily:"var(--font-mono)",display:"block",marginBottom:2}}>{l}</label>
+            <input value={f[k]} onChange={e=>upd(k,e.target.value)} placeholder={LABS_WNL[k]||""} style={{padding:"5px 8px",fontSize:12}}/>
+          </div>
+        ))}
+      </div>}
+      <input placeholder="Na 138, K 4.1, Cr 1.0, Hgb 14, INR 1.0; HR 72, BP 120/80" value={value} onChange={e=>onChange(e.target.value)}/>
+    </div>
+  );
+}
+
+// ─── READING TRACKER HELPERS ─────────────────────────────────────────────────
+const READING_KEY="anesflow_readings_v1";
+const loadCompleted=()=>{try{return new Set(JSON.parse(localStorage.getItem(READING_KEY)||"[]"));}catch{return new Set();}};
+const saveCompleted=(s)=>localStorage.setItem(READING_KEY,JSON.stringify([...s]));
+const rKey=(book,ch)=>`${book}||${ch.ch||ch.title}`;
+
+const getAllChapters=(book)=>{
+  if(book==="toolbox")return[];
+  const result=[],seen=new Set();
+  const add=(ch,src)=>{const k=rKey(book,ch);if(!seen.has(k)){seen.add(k);result.push({...ch,src,rkey:k});}};
+  (RDB.core?.[book]||[]).forEach(ch=>add(ch,"Foundation"));
+  Object.keys(RDB).filter(k=>k!=="core").forEach(ct=>(RDB[ct]?.[book]||[]).forEach(ch=>add(ch,ct)));
+  Object.values(COMORBIDITY_DB).forEach(v=>(v[book]||[]).forEach(ch=>add(ch,"Comorbidity")));
+  return result;
+};
+
+const getABACoverage=(completed,book)=>{
+  const all=getAllChapters(book),stats={};
+  all.forEach(ch=>{
+    (ch.board||[]).forEach(d=>{
+      if(!stats[d])stats[d]={total:0,done:0};
+      stats[d].total++;
+      if(completed.has(ch.rkey))stats[d].done++;
+    });
+  });
+  return stats;
+};
+
+const getNextRecommended=(completed,book,count=5)=>{
+  const all=getAllChapters(book);
+  const stats=getABACoverage(completed,book);
+  const unread=all.filter(ch=>!completed.has(ch.rkey));
+  const score=(ch)=>{
+    const ys={high:0,med:1,low:2}[ch.yield]||1;
+    const ds=(ch.board||[]).map(d=>{const s=stats[d];return(!s||s.total===0)?0.5:s.done/s.total;});
+    const avg=ds.length?ds.reduce((a,b)=>a+b,0)/ds.length:0.5;
+    return ys*10+avg*5;
+  };
+  return unread.sort((a,b)=>score(a)-score(b)).slice(0,count);
+};
+
 // ─── SHARED COMPONENTS ──────────────────────────────────────────────────────
 function Pills({opts=[],sel=[],onChange,multi=true}){
   const safeSel=Array.isArray(sel)?sel:[];
@@ -1176,7 +1289,10 @@ Be terse, clinical, and direct.`;
 
   return(
     <div className="page">
-      <div className="page-title">Pre-Op Planner</div>
+      <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:4,flexWrap:"wrap",gap:8}}>
+        <div className="page-title" style={{marginBottom:0}}>Pre-Op Planner</div>
+        <button className="btn btn-ghost" onClick={()=>setPt(defaultPt)} style={{fontSize:11,padding:"5px 12px",color:"var(--text3)"}}>+ New Patient</button>
+      </div>
       <div className="page-sub">// patient data · anesthesia plan · AI generation</div>
       <div className="preop-grid" style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:24}}>
         {/* LEFT: form */}
@@ -1215,10 +1331,25 @@ Be terse, clinical, and direct.`;
               <select value={pt.mallampati} onChange={e=>s("mallampati",e.target.value)}><option value="">—</option>{["I","II","III","IV"].map(x=><option key={x}>{x}</option>)}</select></div></div>
             <div className="gap"><label className="field-lbl">Functional Capacity (METs)</label>
               <select value={pt.mets} onChange={e=>s("mets",e.target.value)}><option value="">—</option><option value="<4">&lt;4 METs (poor)</option><option value="4-7">4-7 METs (moderate)</option><option value=">7">&gt;7 METs (good)</option></select></div>
-            <div className="gap"><label className="field-lbl">PMHx / Comorbidities</label><textarea placeholder="HTN, DM2, OSA on CPAP, CAD s/p CABG…" value={pt.pmhx} onChange={e=>s("pmhx",e.target.value)}/></div>
-            <div className="gap"><label className="field-lbl">Current Medications</label><textarea placeholder="Metoprolol 25mg daily, Lisinopril…" value={pt.medications} onChange={e=>s("medications",e.target.value)}/></div>
-            <div className="gap"><label className="field-lbl">Prior Anesthesia / Issues</label><input placeholder="Difficult intubation 2019, PONV…" value={pt.priorAnesthesia} onChange={e=>s("priorAnesthesia",e.target.value)}/></div>
-            <div className="gap"><label className="field-lbl">Labs / Vitals</label><input placeholder="Na 138, K 4.1, Cr 1.0, Hgb 12, INR 1.0; HR 72, BP 130/80" value={pt.labs} onChange={e=>s("labs",e.target.value)}/></div>
+            <div className="gap">
+              <label className="field-lbl">PMHx / Comorbidities</label>
+              <QuickTags value={pt.pmhx} onChange={v=>s("pmhx",v)} tags={PMHx_QUICK}/>
+              <textarea placeholder="HTN, DM2, OSA on CPAP…" value={pt.pmhx} onChange={e=>s("pmhx",e.target.value)} style={{minHeight:44}}/>
+            </div>
+            <div className="gap">
+              <label className="field-lbl">Current Medications</label>
+              <QuickTags value={pt.medications} onChange={v=>s("medications",v)} tags={MEDS_QUICK}/>
+              <textarea placeholder="Metoprolol 25mg daily, Lisinopril…" value={pt.medications} onChange={e=>s("medications",e.target.value)} style={{minHeight:44}}/>
+            </div>
+            <div className="gap">
+              <label className="field-lbl">Prior Anesthesia / Issues</label>
+              <QuickTags value={pt.priorAnesthesia} onChange={v=>s("priorAnesthesia",v)} tags={PRIOR_ANES_QUICK}/>
+              <input placeholder="Other notes…" value={pt.priorAnesthesia} onChange={e=>s("priorAnesthesia",e.target.value)}/>
+            </div>
+            <div className="gap">
+              <label className="field-lbl">Labs / Vitals</label>
+              <StructuredLabs value={pt.labs} onChange={v=>s("labs",v)}/>
+            </div>
           </div>
 
           {/* Anesthesia plan */}
@@ -1298,16 +1429,22 @@ function ReadingsTab({pt}){
   const [extraCases,setExtraCases]=useState([]);
   const [caseInput,setCaseInput]=useState("");
   const [activeBook,setActiveBook]=useState("mm");
+  const [view,setView]=useState("today"); // "today"|"queue"|"coverage"
   const [aiOutput,setAiOutput]=useState("");
   const [aiLoading,setAiLoading]=useState(false);
   const [aiStreaming,setAiStreaming]=useState(false);
+  const [completed,setCompleted]=useState(()=>loadCompleted());
+
+  const toggleRead=(ch)=>{
+    const k=rKey(activeBook,ch);
+    const next=new Set(completed);
+    if(next.has(k))next.delete(k);else next.add(k);
+    setCompleted(next);saveCompleted(next);
+  };
+  const isRead=(ch)=>completed.has(rKey(activeBook,ch));
 
   const allCases=[...new Set([...(pt.caseType?[pt.caseType]:[]),...extraCases])];
-
-  const addCase=()=>{
-    if(caseInput&&!extraCases.includes(caseInput)){setExtraCases(p=>[...p,caseInput]);}
-    setCaseInput("");
-  };
+  const addCase=()=>{if(caseInput&&!extraCases.includes(caseInput)){setExtraCases(p=>[...p,caseInput]);}setCaseInput("");};
 
   const BOOK_INFO={
     mm:{label:"M&M",full:"Morgan & Mikhail's Clinical Anesthesiology",edition:"6th ed."},
@@ -1319,10 +1456,9 @@ function ReadingsTab({pt}){
   const getChapters=(book)=>{
     if(book==="toolbox")return[];
     const result=[],seen=new Set();
-    const add=(ch,src)=>{const key=ch.ch||ch.title;if(!seen.has(key)){seen.add(key);result.push({...ch,src});}};
+    const add=(ch,src)=>{const key=ch.ch||ch.title;if(!seen.has(key)){seen.add(key);result.push({...ch,src,rkey:rKey(book,ch)});}};
     (RDB.core?.[book]||[]).forEach(ch=>add(ch,"Foundation"));
     allCases.forEach(ct=>{(RDB[ct]?.[book]||[]).forEach(ch=>add(ch,ct));});
-    // comorbidity triggers
     const pmhx=(pt.pmhx||"").toLowerCase()+(" "+(pt.medications||"")).toLowerCase();
     const checks=[
       {re:/cardiac|heart failure|chf|cad|mi\b|coronary|angina|valve|ef\b|af\b/,key:"cardiac",lbl:"Cardiac comorbidity"},
@@ -1338,16 +1474,15 @@ function ReadingsTab({pt}){
     return result.sort((a,b)=>({high:0,med:1,low:2}[a.yield]||1)-({high:0,med:1,low:2}[b.yield]||1));
   };
 
-  const getBoardTopics=()=>{
-    const out=[];
-    allCases.forEach(ct=>{(RDB[ct]?.boards||[]).forEach(t=>out.push({topic:t,case:ct}));});
-    return out;
-  };
+  const getBoardTopics=()=>{const out=[];allCases.forEach(ct=>{(RDB[ct]?.boards||[]).forEach(t=>out.push({topic:t,case:ct}));});return out;};
 
   const generateAI=async()=>{
     setAiLoading(true);setAiOutput("");setAiStreaming(true);
-    const chapters=getChapters(activeBook);
     const boardTopics=getBoardTopics();
+    const covStats=getABACoverage(completed,activeBook);
+    const weakAreas=Object.entries(covStats).filter(([,v])=>v.total>0)
+      .sort(([,a],[,b])=>(a.done/a.total)-(b.done/b.total)).slice(0,5)
+      .map(([k,v])=>`${k} (${v.done}/${v.total} chapters read)`);
     const prompt=`You are a senior anesthesiologist helping a CA1 resident prep for boards and tomorrow's cases. Generate a HIGH-YIELD, ABA BASIC EXAM-FOCUSED study guide.
 
 TODAY'S CASES: ${allCases.join(", ")||"General"}
@@ -1357,14 +1492,17 @@ PROCEDURE: ${pt.procedure||"TBD"} | ASA: ${pt.asa||"?"}
 KEY BOARD TOPICS FOR TODAY'S CASES:
 ${boardTopics.map(t=>`- ${t.topic} [${t.case}]`).join("\n")||"- General anesthesia principles"}
 
-For EACH case type today, generate:
-1. TOP 5-7 HIGH-YIELD CONCEPTS (board-style, what's most commonly tested)
-2. Key numbers/formulas to know cold
-3. One CLASSIC BOARD SCENARIO per case (brief setup + teaching point)
-4. Comorbidity-specific anesthetic implications for THIS patient
-5. "DON'T MISS" list: 3-4 critical items for tomorrow
+WEAKEST ABA CONTENT AREAS (prioritize these in your response):
+${weakAreas.join("\n")||"- No tracking data yet — cover all areas"}
 
-Be concise, exam-focused. Format with clear headers. Target ABA BASIC exam level.`;
+For EACH case type today, generate:
+1. TOP 5-7 HIGH-YIELD CONCEPTS (board-style, most commonly tested)
+2. Key numbers/formulas to know cold
+3. One CLASSIC BOARD SCENARIO (brief setup + teaching point)
+4. Comorbidity-specific anesthetic implications for THIS patient
+5. "DON'T MISS" list: 3-4 critical items
+
+Focus extra attention on the weakest ABA areas listed. Be concise, exam-focused. Target ABA BASIC exam level.`;
     try{
       const r=await fetch("https://api.anthropic.com/v1/messages",{method:"POST",
         headers:{"Content-Type":"application/json","x-api-key":getApiKey(),"anthropic-version":"2023-06-01","anthropic-dangerous-direct-browser-access":"true"},
@@ -1379,152 +1517,219 @@ Be concise, exam-focused. Format with clear headers. Target ABA BASIC exam level
   };
 
   const yieldInfo=(y)=>y==="high"?{icon:"⭐",label:"High Yield",color:"var(--cyan)"}:y==="med"?{icon:"◉",label:"Med Yield",color:"var(--amber)"}:{icon:"◯",label:"Background",color:"var(--text3)"};
+
+  const ChapterCard=({ch})=>{
+    const yi=yieldInfo(ch.yield);
+    const read=completed.has(ch.rkey||rKey(activeBook,ch));
+    return(
+      <div className={`reading-card ${ch.yield}`} style={{opacity:read?0.5:1,transition:"opacity 0.2s"}}>
+        <div style={{display:"flex",alignItems:"flex-start",justifyContent:"space-between",gap:12,marginBottom:6}}>
+          <div style={{flex:1}}>
+            <div style={{display:"flex",alignItems:"center",flexWrap:"wrap",gap:6,marginBottom:5}}>
+              <span className="ch-badge">{ch.ch}</span>
+              <span style={{fontFamily:"var(--font-head)",fontSize:14,fontWeight:700,color:read?"var(--text3)":"var(--text)",textDecoration:read?"line-through":"none"}}>{ch.title}</span>
+            </div>
+            {ch.why&&<div style={{fontSize:12,color:"var(--text2)",lineHeight:1.55}}>{ch.why}</div>}
+          </div>
+          <div style={{display:"flex",flexDirection:"column",alignItems:"flex-end",gap:5,flexShrink:0}}>
+            <span style={{fontFamily:"var(--font-mono)",fontSize:10,color:yi.color,whiteSpace:"nowrap"}}>{yi.icon} {yi.label}</span>
+            <button onClick={()=>toggleRead(ch)} className="btn btn-ghost"
+              style={{fontSize:10,padding:"3px 9px",color:read?"var(--green)":"var(--text3)",borderColor:read?"rgba(52,211,153,0.4)":"var(--border2)"}}>
+              {read?"✓ Read":"Mark Read"}
+            </button>
+          </div>
+        </div>
+        <div style={{display:"flex",flexWrap:"wrap",gap:4,marginTop:8}}>
+          <span className="source-tag">📌 {ch.src}</span>
+          {(ch.board||[]).map((b,bi)=><span key={bi} className="board-tag">{b}</span>)}
+        </div>
+      </div>
+    );
+  };
+
   const chapters=getChapters(activeBook);
   const boardTopics=getBoardTopics();
   const toolboxItems=allCases.flatMap(ct=>(RDB[ct]?.toolbox||[]).map(t=>({...t,case:ct})));
+  const allChsForBook=getAllChapters(activeBook);
+  const totalRead=allChsForBook.filter(ch=>completed.has(ch.rkey)).length;
+  const totalChs=allChsForBook.length;
+  const covStats=getABACoverage(completed,activeBook);
+  const nextRecs=getNextRecommended(completed,activeBook,5);
 
   return(
     <div className="page">
       <div className="page-title">Reading Recommendations</div>
-      <div className="page-sub">// textbook chapters · board exam focus · AI study guide</div>
+      <div className="page-sub">// textbook chapters · ABA tracking · board exam focus</div>
 
-      {/* Today's Cases */}
-      <div className="card gap" style={{marginBottom:16}}>
-        <div className="section-head">Today's Cases</div>
-        {allCases.length===0&&<div style={{color:"var(--text3)",fontFamily:"var(--font-mono)",fontSize:12,marginBottom:10}}>No cases loaded — set case type in Pre-Op Planner or add cases below</div>}
-        <div style={{display:"flex",flexWrap:"wrap",gap:8,marginBottom:12}}>
-          {allCases.map(c=>(
-            <span key={c} style={{display:"flex",alignItems:"center",gap:6,padding:"5px 12px",background:"var(--cyan2)",border:"1px solid var(--cyan)",borderRadius:"var(--r)",fontSize:12,color:"var(--cyan)",fontFamily:"var(--font-mono)"}}>
-              {c}
-              {c===pt.caseType?<span style={{fontSize:9,opacity:0.6}}>auto</span>:<span onClick={()=>setExtraCases(p=>p.filter(x=>x!==c))} style={{cursor:"pointer",opacity:0.7,fontSize:14,lineHeight:1}}>×</span>}
-            </span>
-          ))}
-        </div>
-        <div style={{display:"flex",gap:8}}>
-          <select value={caseInput} onChange={e=>setCaseInput(e.target.value)} style={{flex:1}}>
-            <option value="">+ Add another case for today…</option>
-            {CASE_TYPES.filter(c=>!allCases.includes(c)).map(c=><option key={c} value={c}>{c}</option>)}
-          </select>
-          <button className="btn btn-ghost" onClick={addCase} disabled={!caseInput} style={{fontSize:12,padding:"8px 16px",flexShrink:0}}>Add</button>
-        </div>
+      {/* Book selector + overall progress */}
+      <div style={{display:"flex",gap:6,flexWrap:"wrap",marginBottom:10}}>
+        {Object.entries(BOOK_INFO).map(([id,b])=>{
+          const allChs=getAllChapters(id);
+          const rd=allChs.filter(c=>completed.has(c.rkey)).length;
+          const pct=allChs.length?Math.round((rd/allChs.length)*100):0;
+          return(
+            <button key={id} onClick={()=>setActiveBook(id)} className={`btn ${activeBook===id?"btn-primary":"btn-ghost"}`} style={{fontSize:12,padding:"7px 14px"}}>
+              {b.label}{id!=="toolbox"&&<span style={{fontSize:9,opacity:0.7,marginLeft:5,fontFamily:"var(--font-mono)"}}>{pct}%</span>}
+            </button>
+          );
+        })}
       </div>
-
-      {/* Board Exam Topics */}
-      {boardTopics.length>0&&(
-        <div className="card gap" style={{marginBottom:16,background:"rgba(0,212,255,0.02)",borderColor:"rgba(0,212,255,0.2)"}}>
-          <div className="section-head">ABA Board Focus — Today's Cases</div>
-          <div style={{display:"flex",flexWrap:"wrap",gap:5}}>
-            {boardTopics.map((t,i)=>(
-              <span key={i} style={{padding:"4px 10px",border:"1px solid rgba(0,212,255,0.2)",borderRadius:20,fontSize:11,color:"var(--text2)",fontFamily:"var(--font-mono)",background:"rgba(0,212,255,0.04)"}}>
-                {t.topic}
-              </span>
-            ))}
+      {activeBook!=="toolbox"&&totalChs>0&&(
+        <div style={{marginBottom:16}}>
+          <div style={{display:"flex",justifyContent:"space-between",marginBottom:4}}>
+            <span style={{fontFamily:"var(--font-mono)",fontSize:10,color:"var(--text3)"}}>{BOOK_INFO[activeBook]?.label} · {totalRead}/{totalChs} chapters read</span>
+            <span style={{fontFamily:"var(--font-mono)",fontSize:10,color:totalRead/totalChs>0.7?"var(--green)":totalRead/totalChs>0.3?"var(--cyan)":"var(--amber)"}}>{Math.round((totalRead/totalChs)*100)}%</span>
+          </div>
+          <div className="risk-bar-wrap" style={{height:5}}>
+            <div className="risk-bar" style={{width:`${(totalRead/totalChs)*100}%`,background:totalRead/totalChs>0.7?"var(--green)":totalRead/totalChs>0.3?"var(--cyan)":"var(--amber)"}}/>
           </div>
         </div>
       )}
 
-      {/* Book selector */}
-      <div style={{display:"flex",gap:6,flexWrap:"wrap",marginBottom:16}}>
-        {Object.entries(BOOK_INFO).map(([id,b])=>(
-          <button key={id} onClick={()=>setActiveBook(id)} className={`btn ${activeBook===id?"btn-primary":"btn-ghost"}`} style={{fontSize:12,padding:"8px 18px"}}>{b.label}</button>
+      {/* View switcher */}
+      <div style={{display:"flex",gap:5,marginBottom:16,flexWrap:"wrap"}}>
+        {[{id:"today",lbl:"Today's Cases"},{id:"queue",lbl:"📋 Reading Queue"},{id:"coverage",lbl:"📊 ABA Coverage"}].map(v=>(
+          <button key={v.id} className={`btn ${view===v.id?"btn-primary":"btn-ghost"}`} style={{fontSize:12,padding:"7px 14px"}} onClick={()=>setView(v.id)}>{v.lbl}</button>
         ))}
       </div>
 
-      {/* Book header */}
-      <div style={{marginBottom:16}}>
-        <div style={{fontFamily:"var(--font-head)",fontSize:15,fontWeight:700}}>{BOOK_INFO[activeBook]?.full}</div>
-        <div style={{fontFamily:"var(--font-mono)",fontSize:10,color:"var(--text3)",marginTop:2}}>
-          {BOOK_INFO[activeBook]?.edition}
-          {activeBook!=="toolbox"&&` · ${chapters.length} chapter${chapters.length!==1?"s":""} recommended`}
-        </div>
-      </div>
-
-      {/* ASA Toolbox special view */}
-      {activeBook==="toolbox"&&(
-        <div className="card" style={{textAlign:"center",padding:32}}>
-          <div style={{fontSize:40,marginBottom:12}}>🔗</div>
-          <div style={{fontFamily:"var(--font-head)",fontSize:17,fontWeight:700,marginBottom:8}}>ASA Anesthesia Toolbox</div>
-          <div style={{color:"var(--text2)",fontSize:13,marginBottom:20,lineHeight:1.7}}>Free clinical reference resources for anesthesiologists.<br/>Access through your ASA member account.</div>
-          {toolboxItems.length>0&&(<>
-            <div style={{fontFamily:"var(--font-mono)",fontSize:11,color:"var(--text3)",marginBottom:12}}>Recommended Toolbox searches for today's cases:</div>
-            <div style={{display:"flex",flexWrap:"wrap",gap:8,justifyContent:"center",marginBottom:24}}>
-              {toolboxItems.map((t,i)=>(
-                <div key={i} style={{padding:"8px 14px",background:"var(--cyan2)",border:"1px solid rgba(0,212,255,0.3)",borderRadius:"var(--r)",fontSize:12,color:"var(--cyan)",fontFamily:"var(--font-mono)",textAlign:"left"}}>
-                  <div style={{fontWeight:600}}>{t.title}</div>
-                  <div style={{fontSize:10,opacity:0.7,marginTop:2}}>{t.tag}</div>
-                </div>
-              ))}
-            </div>
-          </>)}
-          <a href="https://www.asahq.org/education-and-career/learning-education/toolbox" target="_blank" rel="noreferrer"
-            style={{display:"inline-flex",alignItems:"center",gap:8,padding:"11px 28px",background:"linear-gradient(135deg,var(--cyan),#4f46e5)",borderRadius:"var(--r)",color:"white",fontSize:14,fontWeight:600,textDecoration:"none"}}>
-            Open ASA Toolbox →
-          </a>
-        </div>
-      )}
-
-      {/* Chapter cards */}
-      {activeBook!=="toolbox"&&(<>
-        {chapters.length===0&&allCases.length===0&&(
-          <div className="card" style={{textAlign:"center",padding:40}}>
-            <div style={{fontSize:32,marginBottom:8,opacity:0.3}}>📚</div>
-            <div style={{color:"var(--text3)",fontFamily:"var(--font-mono)",fontSize:12}}>Add cases above to get personalized chapter recommendations</div>
+      {/* ── TODAY VIEW ── */}
+      {view==="today"&&(<>
+        {/* Cases row */}
+        <div className="card gap" style={{marginBottom:16}}>
+          <div className="section-head">Today's Cases</div>
+          {allCases.length===0&&<div style={{color:"var(--text3)",fontFamily:"var(--font-mono)",fontSize:12,marginBottom:10}}>No cases loaded — set case type in Pre-Op Planner or add cases below</div>}
+          <div style={{display:"flex",flexWrap:"wrap",gap:8,marginBottom:12}}>
+            {allCases.map(c=>(
+              <span key={c} style={{display:"flex",alignItems:"center",gap:6,padding:"5px 12px",background:"var(--cyan2)",border:"1px solid var(--cyan)",borderRadius:"var(--r)",fontSize:12,color:"var(--cyan)",fontFamily:"var(--font-mono)"}}>
+                {c}
+                {c===pt.caseType?<span style={{fontSize:9,opacity:0.6}}>auto</span>:<span onClick={()=>setExtraCases(p=>p.filter(x=>x!==c))} style={{cursor:"pointer",opacity:0.7,fontSize:14,lineHeight:1}}>×</span>}
+              </span>
+            ))}
           </div>
-        )}
-        {chapters.length===0&&allCases.length>0&&(
+          <div style={{display:"flex",gap:8}}>
+            <select value={caseInput} onChange={e=>setCaseInput(e.target.value)} style={{flex:1}}>
+              <option value="">+ Add another case for today…</option>
+              {CASE_TYPES.filter(c=>!allCases.includes(c)).map(c=><option key={c} value={c}>{c}</option>)}
+            </select>
+            <button className="btn btn-ghost" onClick={addCase} disabled={!caseInput} style={{fontSize:12,padding:"8px 16px",flexShrink:0}}>Add</button>
+          </div>
+        </div>
+        {activeBook==="toolbox"?(
           <div className="card" style={{textAlign:"center",padding:32}}>
-            <div style={{color:"var(--text3)",fontFamily:"var(--font-mono)",fontSize:12}}>No chapters mapped for these cases in this book yet.</div>
+            <div style={{fontSize:40,marginBottom:12}}>🔗</div>
+            <div style={{fontFamily:"var(--font-head)",fontSize:17,fontWeight:700,marginBottom:8}}>ASA Anesthesia Toolbox</div>
+            <div style={{color:"var(--text2)",fontSize:13,marginBottom:20,lineHeight:1.7}}>Free clinical reference resources.<br/>Access through your ASA member account.</div>
+            {toolboxItems.length>0&&<div style={{display:"flex",flexWrap:"wrap",gap:8,justifyContent:"center",marginBottom:24}}>{toolboxItems.map((t,i)=><div key={i} style={{padding:"8px 14px",background:"var(--cyan2)",border:"1px solid rgba(0,212,255,0.3)",borderRadius:"var(--r)",fontSize:12,color:"var(--cyan)",fontFamily:"var(--font-mono)"}}><div style={{fontWeight:600}}>{t.title}</div></div>)}</div>}
+            <a href="https://www.asahq.org/education-and-career/learning-education/toolbox" target="_blank" rel="noreferrer"
+              style={{display:"inline-flex",alignItems:"center",gap:8,padding:"11px 28px",background:"linear-gradient(135deg,var(--cyan),#4f46e5)",borderRadius:"var(--r)",color:"white",fontSize:14,fontWeight:600,textDecoration:"none"}}>
+              Open ASA Toolbox →
+            </a>
+          </div>
+        ):(
+          <>
+            {boardTopics.length>0&&(
+              <div className="card gap" style={{marginBottom:16,background:"rgba(0,212,255,0.02)",borderColor:"rgba(0,212,255,0.2)"}}>
+                <div className="section-head">ABA Board Focus — Today's Cases</div>
+                <div style={{display:"flex",flexWrap:"wrap",gap:5}}>
+                  {boardTopics.map((t,i)=><span key={i} style={{padding:"4px 10px",border:"1px solid rgba(0,212,255,0.2)",borderRadius:20,fontSize:11,color:"var(--text2)",fontFamily:"var(--font-mono)",background:"rgba(0,212,255,0.04)"}}>{t.topic}</span>)}
+                </div>
+              </div>
+            )}
+            {chapters.length===0&&allCases.length===0&&<div className="card" style={{textAlign:"center",padding:40}}><div style={{fontSize:32,marginBottom:8,opacity:0.3}}>📚</div><div style={{color:"var(--text3)",fontFamily:"var(--font-mono)",fontSize:12}}>Add cases above to get personalized chapter recommendations</div></div>}
+            {chapters.map((ch,i)=><ChapterCard key={i} ch={ch}/>)}
+          </>
+        )}
+        {allCases.length>0&&(
+          <div className="card" style={{marginTop:20,borderColor:"rgba(167,139,250,0.25)"}}>
+            <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:14,flexWrap:"wrap",gap:10}}>
+              <div>
+                <div className="section-head" style={{marginBottom:2}}>AI Board-Focused Study Guide</div>
+                <div style={{fontFamily:"var(--font-mono)",fontSize:10,color:"var(--text3)"}}>Tailored to today's cases + your weakest ABA content areas</div>
+              </div>
+              <button className="btn btn-primary" onClick={generateAI} disabled={aiLoading} style={{fontSize:12,padding:"9px 18px",flexShrink:0,background:"linear-gradient(135deg,var(--purple),#4f46e5)"}}>
+                {aiLoading?<span className="dot-stream">Generating</span>:"📖 Generate Study Guide"}
+              </button>
+            </div>
+            {!aiOutput&&!aiLoading&&<div style={{textAlign:"center",padding:"28px 0",color:"var(--text3)",fontFamily:"var(--font-mono)",fontSize:11,lineHeight:1.7}}>Prioritizes your weakest ABA areas + classic board scenarios</div>}
+            {(aiOutput||aiLoading)&&<div className="plan-out" style={{fontSize:12.5}}>{aiOutput.replace(/\*\*(.*?)\*\*/g,"$1").replace(/#{1,3}\s/g,"")}{aiStreaming&&<span className="blink-cur"/>}</div>}
           </div>
         )}
-        {chapters.map((ch,i)=>{
-          const yi=yieldInfo(ch.yield);
-          return(
-            <div key={i} className={`reading-card ${ch.yield}`}>
-              <div style={{display:"flex",alignItems:"flex-start",justifyContent:"space-between",gap:12,marginBottom:6}}>
-                <div style={{flex:1}}>
-                  <div style={{display:"flex",alignItems:"center",flexWrap:"wrap",gap:6,marginBottom:5}}>
-                    <span className="ch-badge">{ch.ch}</span>
-                    <span style={{fontFamily:"var(--font-head)",fontSize:14,fontWeight:700,color:"var(--text)"}}>{ch.title}</span>
-                  </div>
-                  {ch.why&&<div style={{fontSize:12,color:"var(--text2)",lineHeight:1.55}}>{ch.why}</div>}
-                </div>
-                <span style={{fontFamily:"var(--font-mono)",fontSize:10,color:yi.color,flexShrink:0,marginTop:2,whiteSpace:"nowrap"}}>{yi.icon} {yi.label}</span>
-              </div>
-              <div style={{display:"flex",flexWrap:"wrap",gap:4,marginTop:8}}>
-                <span className="source-tag">📌 {ch.src}</span>
-                {(ch.board||[]).map((b,bi)=><span key={bi} className="board-tag">{b}</span>)}
-              </div>
-            </div>
-          );
-        })}
       </>)}
 
-      {/* AI Study Guide */}
-      {allCases.length>0&&(
-        <div className="card" style={{marginTop:20,borderColor:"rgba(167,139,250,0.25)"}}>
-          <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:14,flexWrap:"wrap",gap:10}}>
-            <div>
-              <div className="section-head" style={{marginBottom:2}}>AI Board-Focused Study Guide</div>
-              <div style={{fontFamily:"var(--font-mono)",fontSize:10,color:"var(--text3)"}}>ABA BASIC exam focus · tailored to today's cases + patient comorbidities</div>
-            </div>
-            <button className="btn btn-primary" onClick={generateAI} disabled={aiLoading} style={{fontSize:12,padding:"9px 18px",flexShrink:0,background:"linear-gradient(135deg,var(--purple),#4f46e5)"}}>
-              {aiLoading?<span className="dot-stream">Generating</span>:"📖 Generate Study Guide"}
-            </button>
+      {/* ── QUEUE VIEW ── */}
+      {view==="queue"&&(<>
+        <div style={{marginBottom:16}}>
+          <div style={{fontFamily:"var(--font-head)",fontSize:15,fontWeight:700}}>{BOOK_INFO[activeBook]?.full}</div>
+          <div style={{fontFamily:"var(--font-mono)",fontSize:10,color:"var(--text3)",marginTop:2}}>
+            Prioritized by ABA coverage gaps + yield — read these next to fill the biggest holes
           </div>
-          {!aiOutput&&!aiLoading&&(
-            <div style={{textAlign:"center",padding:"28px 0",color:"var(--text3)",fontFamily:"var(--font-mono)",fontSize:11,lineHeight:1.7}}>
-              Click to generate board-focused notes tailored to today's cases<br/>
-              <span style={{fontSize:10,opacity:0.6}}>Includes classic board scenarios + key numbers + don't-miss items</span>
-            </div>
-          )}
-          {(aiOutput||aiLoading)&&(
-            <div className="plan-out" style={{fontSize:12.5}}>
-              {aiOutput.replace(/\*\*(.*?)\*\*/g,"$1").replace(/#{1,3}\s/g,"")}
-              {aiStreaming&&<span className="blink-cur"/>}
-            </div>
-          )}
         </div>
-      )}
+        {nextRecs.length===0?(
+          <div className="card" style={{textAlign:"center",padding:40}}>
+            <div style={{fontSize:32,marginBottom:8}}>🎉</div>
+            <div style={{fontFamily:"var(--font-head)",fontSize:16,fontWeight:700,color:"var(--green)",marginBottom:6}}>All chapters marked read!</div>
+            <div style={{color:"var(--text3)",fontSize:12}}>Complete coverage for {BOOK_INFO[activeBook]?.label}.</div>
+          </div>
+        ):(
+          nextRecs.map((ch,i)=>(
+            <div key={i}>
+              {i===0&&<div style={{fontFamily:"var(--font-mono)",fontSize:9,color:"var(--cyan)",letterSpacing:2,textTransform:"uppercase",marginBottom:6}}>▸ Highest Priority</div>}
+              {i===1&&<div style={{fontFamily:"var(--font-mono)",fontSize:9,color:"var(--text3)",letterSpacing:2,textTransform:"uppercase",marginBottom:6,marginTop:4}}>Up Next</div>}
+              <ChapterCard ch={ch}/>
+            </div>
+          ))
+        )}
+        {allChsForBook.filter(ch=>!completed.has(ch.rkey)).length>5&&(
+          <div style={{textAlign:"center",padding:"12px 0",color:"var(--text3)",fontFamily:"var(--font-mono)",fontSize:11}}>
+            + {allChsForBook.filter(ch=>!completed.has(ch.rkey)).length-5} more unread chapters
+          </div>
+        )}
+      </>)}
+
+      {/* ── COVERAGE VIEW ── */}
+      {view==="coverage"&&(<>
+        <div style={{marginBottom:16}}>
+          <div style={{fontFamily:"var(--font-head)",fontSize:15,fontWeight:700}}>ABA Content Area Coverage</div>
+          <div style={{fontFamily:"var(--font-mono)",fontSize:10,color:"var(--text3)",marginTop:2}}>
+            Sorted by least-covered first — focus your reading on red/amber areas
+          </div>
+        </div>
+        <div style={{display:"flex",gap:5,flexWrap:"wrap",marginBottom:16}}>
+          {["mm","barash","jaffe"].map(id=>{
+            const s=getABACoverage(completed,id);
+            const vals=Object.values(s);
+            const pct=vals.length?Math.round(100*vals.reduce((a,v)=>a+(v.done/v.total),0)/vals.length):0;
+            return(
+              <button key={id} className={`btn ${activeBook===id?"btn-primary":"btn-ghost"}`} style={{fontSize:12,padding:"7px 14px"}} onClick={()=>setActiveBook(id)}>
+                {BOOK_INFO[id]?.label} — {pct}%
+              </button>
+            );
+          })}
+        </div>
+        {Object.keys(covStats).length===0?(
+          <div className="card" style={{textAlign:"center",padding:40}}>
+            <div style={{color:"var(--text3)",fontFamily:"var(--font-mono)",fontSize:12}}>No chapters tracked yet — mark chapters as read to see ABA coverage analysis.</div>
+          </div>
+        ):(
+          Object.entries(covStats).sort(([,a],[,b])=>(a.done/a.total)-(b.done/b.total)).map(([domain,{total,done}])=>{
+            const pct=Math.round((done/total)*100);
+            return(
+              <div key={domain} style={{marginBottom:12}}>
+                <div style={{display:"flex",justifyContent:"space-between",marginBottom:4,alignItems:"center"}}>
+                  <span style={{fontSize:12,color:"var(--text2)"}}>{domain}</span>
+                  <span style={{fontFamily:"var(--font-mono)",fontSize:11,color:pct>=70?"var(--green)":pct>=30?"var(--amber)":"var(--red)",fontWeight:600}}>
+                    {done}/{total} — {pct}%
+                  </span>
+                </div>
+                <div className="risk-bar-wrap" style={{height:5}}>
+                  <div className="risk-bar" style={{width:`${pct}%`,background:pct>=70?"var(--green)":pct>=30?"var(--cyan)":"var(--red)"}}/>
+                </div>
+              </div>
+            );
+          })
+        )}
+      </>)}
     </div>
   );
 }
