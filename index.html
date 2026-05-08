@@ -1,0 +1,1640 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover"/>
+  <meta name="apple-mobile-web-app-capable" content="yes"/>
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"/>
+  <meta name="apple-mobile-web-app-title" content="AnesFlow"/>
+  <meta name="mobile-web-app-capable" content="yes"/>
+  <meta name="theme-color" content="#080c14"/>
+  <meta name="description" content="CA1 Anesthesiology Workflow Suite — Pre-Op Planner, Drug Calculator, Risk Stratifier, OR Checklist, Reading Recommendations"/>
+  <title>AnesFlow</title>
+  <link rel="manifest" href="/manifest.json"/>
+  <link rel="apple-touch-icon" href="/icons/icon-512.svg"/>
+  <script crossorigin src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
+  <script crossorigin src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.5/babel.min.js"></script>
+  <style>
+    html,body,#root{height:100%;margin:0;padding:0;background:#080c14;}
+    body{padding-top:env(safe-area-inset-top);-webkit-text-size-adjust:100%;}
+  </style>
+</head>
+<body>
+  <div id="root"></div>
+  <script type="text/babel" data-presets="react">
+    const { useState, useCallback, useRef, useEffect } = React;
+
+    const getApiKey = () => localStorage.getItem("anesflow_api_key") || "";
+    let ANTHROPIC_API_KEY = getApiKey();
+
+    function ApiKeyGate({ onSave }) {
+      const [val, setVal] = useState("");
+      const [err, setErr] = useState("");
+      const submit = () => {
+        const trimmed = val.trim();
+        if (!trimmed.startsWith("sk-ant-")) { setErr("Key should start with sk-ant-"); return; }
+        localStorage.setItem("anesflow_api_key", trimmed);
+        ANTHROPIC_API_KEY = trimmed;
+        onSave();
+      };
+      return (
+        <div style={{minHeight:"100vh",background:"#080c14",display:"flex",alignItems:"center",justifyContent:"center",padding:24}}>
+          <div style={{background:"#0d1320",border:"1px solid rgba(0,212,255,0.25)",borderRadius:16,padding:32,maxWidth:440,width:"100%"}}>
+            <div style={{fontFamily:"'Syne',sans-serif",fontSize:22,fontWeight:700,color:"#e4eaf8",marginBottom:6}}>🫁 AnesFlow</div>
+            <div style={{fontFamily:"monospace",fontSize:11,color:"#4a5a7a",marginBottom:24,letterSpacing:1}}>CA1 Anesthesiology Suite — Requires Anthropic API Key</div>
+            <div style={{fontSize:12,color:"#8fa3cc",marginBottom:8}}>Anthropic API Key</div>
+            <input type="password" placeholder="sk-ant-api03-..." value={val}
+              onChange={e=>{setVal(e.target.value);setErr("");}}
+              onKeyDown={e=>e.key==="Enter"&&submit()}
+              style={{width:"100%",background:"rgba(255,255,255,0.04)",border:"1px solid rgba(255,255,255,0.12)",borderRadius:8,color:"#e4eaf8",fontFamily:"monospace",fontSize:13,padding:"10px 12px",outline:"none",boxSizing:"border-box",marginBottom:err?8:16}}/>
+            {err && <div style={{fontSize:11,color:"#f87171",marginBottom:12}}>{err}</div>}
+            <button onClick={submit} style={{width:"100%",padding:12,background:"linear-gradient(135deg,#00d4ff,#4f46e5)",border:"none",borderRadius:8,color:"white",fontFamily:"sans-serif",fontSize:14,fontWeight:600,cursor:"pointer",marginBottom:20}}>
+              Save Key &amp; Launch App
+            </button>
+            <div style={{background:"rgba(245,166,35,0.08)",border:"1px solid rgba(245,166,35,0.25)",borderRadius:8,padding:12}}>
+              <div style={{fontSize:11,color:"#f5a623",fontWeight:600,marginBottom:6}}>⚠ How to get your API key</div>
+              <div style={{fontSize:11,color:"#8fa3cc",lineHeight:1.6}}>
+                1. Go to <span style={{color:"#00d4ff"}}>console.anthropic.com</span><br/>
+                2. Sign in → API Keys → Create Key<br/>
+                3. Paste the full sk-ant-... key above
+              </div>
+            </div>
+            <div style={{marginTop:12,fontSize:10,color:"#4a5a7a",lineHeight:1.5,fontFamily:"monospace"}}>Key stored locally on this device only.</div>
+          </div>
+        </div>
+      );
+    }
+
+const FONTS = `@import url('https://fonts.googleapis.com/css2?family=Syne:wght@400;500;600;700;800&family=JetBrains+Mono:ital,wght@0,300;0,400;0,500;1,300&family=Figtree:ital,wght@0,300;0,400;0,500;0,600;1,300&display=swap');`;
+
+const CSS = `
+*{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --bg:#080c14;--bg1:#0d1320;--bg2:#111827;--bg3:#1a2235;
+  --border:rgba(255,255,255,0.07);--border2:rgba(255,255,255,0.12);
+  --text:#e4eaf8;--text2:#8fa3cc;--text3:#4a5a7a;
+  --cyan:#00d4ff;--cyan2:rgba(0,212,255,0.15);--cyan3:rgba(0,212,255,0.06);
+  --amber:#f5a623;--amber2:rgba(245,166,35,0.15);
+  --green:#34d399;--green2:rgba(52,211,153,0.15);
+  --red:#f87171;--red2:rgba(248,113,113,0.15);
+  --purple:#a78bfa;--purple2:rgba(167,139,250,0.15);
+  --font-head:'Syne',sans-serif;--font-body:'Figtree',sans-serif;--font-mono:'JetBrains Mono',monospace;
+  --r:8px;--r2:12px;--r3:16px;
+}
+body{font-family:var(--font-body);background:var(--bg);color:var(--text);min-height:100vh;overflow-x:hidden}
+.app{display:flex;flex-direction:column;min-height:100vh;position:relative}
+.app::before{content:'';position:fixed;inset:0;pointer-events:none;z-index:0;
+  background:radial-gradient(ellipse 70% 50% at 15% 5%,rgba(0,212,255,0.055) 0%,transparent 70%),
+    radial-gradient(ellipse 50% 40% at 85% 90%,rgba(167,139,250,0.04) 0%,transparent 60%);}
+
+/* TOP NAV — desktop only */
+.nav{display:flex;align-items:center;gap:0;border-bottom:1px solid var(--border);
+  background:rgba(8,12,20,0.92);backdrop-filter:blur(16px);
+  position:sticky;top:0;z-index:100;padding:0 8px;}
+.nav-logo{display:flex;align-items:center;gap:10px;padding:14px 20px;border-right:1px solid var(--border);margin-right:8px;flex-shrink:0;}
+.nav-logo-icon{width:32px;height:32px;border-radius:8px;background:linear-gradient(135deg,var(--cyan),#4f46e5);display:flex;align-items:center;justify-content:center;font-size:16px;}
+.nav-logo h1{font-family:var(--font-head);font-size:15px;font-weight:700;letter-spacing:-0.3px;white-space:nowrap;}
+.nav-logo span{font-family:var(--font-mono);font-size:9px;color:var(--text3);letter-spacing:1px;display:block;margin-top:1px;}
+.nav-tabs{display:flex;gap:2px;flex:1;overflow-x:auto;padding:8px 0;}
+.nav-tab{display:flex;align-items:center;gap:7px;padding:7px 16px;border-radius:var(--r);
+  font-size:12.5px;font-weight:500;color:var(--text3);cursor:pointer;
+  border:1px solid transparent;transition:all 0.18s;white-space:nowrap;font-family:var(--font-body);background:none;}
+.nav-tab:hover{color:var(--text2);background:var(--bg3);}
+.nav-tab.active{color:var(--cyan);background:var(--cyan3);border-color:rgba(0,212,255,0.25);}
+.nav-tab-icon{font-size:14px;}
+.nav-badge{font-family:var(--font-mono);font-size:9px;padding:2px 5px;border-radius:4px;background:var(--cyan2);color:var(--cyan);margin-left:2px;}
+
+/* BOTTOM NAV — mobile only */
+.bottom-nav{display:none;position:fixed;bottom:0;left:0;right:0;
+  background:rgba(8,12,20,0.97);backdrop-filter:blur(20px);
+  border-top:1px solid rgba(255,255,255,0.09);
+  z-index:200;padding:6px 0;
+  padding-bottom:calc(6px + env(safe-area-inset-bottom));}
+.bottom-nav-inner{display:flex;align-items:stretch;justify-content:space-around;}
+.bn-btn{display:flex;flex-direction:column;align-items:center;gap:3px;
+  padding:6px 8px;border-radius:10px;border:none;background:transparent;
+  cursor:pointer;color:var(--text3);font-family:var(--font-body);
+  min-width:58px;font-size:10px;font-weight:500;transition:all 0.15s;min-height:52px;justify-content:center;}
+.bn-btn.active{color:var(--cyan);}
+.bn-btn-icon{font-size:22px;line-height:1;}
+.bn-badge{font-family:var(--font-mono);font-size:8px;padding:1px 4px;border-radius:3px;background:var(--cyan2);color:var(--cyan);margin-top:1px;}
+
+/* CONTENT */
+.content{flex:1;position:relative;z-index:1;}
+.page{padding:28px 32px;max-width:1400px;margin:0 auto;}
+.page-title{font-family:var(--font-head);font-size:22px;font-weight:700;letter-spacing:-0.5px;margin-bottom:4px;}
+.page-sub{font-size:13px;color:var(--text3);font-family:var(--font-mono);margin-bottom:24px;}
+.card{background:var(--bg1);border:1px solid var(--border);border-radius:var(--r2);padding:20px;}
+.card-sm{background:var(--bg1);border:1px solid var(--border);border-radius:var(--r);padding:14px;}
+.section-head{font-family:var(--font-mono);font-size:9.5px;font-weight:500;letter-spacing:2px;
+  text-transform:uppercase;color:var(--cyan);margin-bottom:10px;
+  display:flex;align-items:center;gap:8px;}
+.section-head::after{content:'';flex:1;height:1px;background:rgba(0,212,255,0.15);}
+input,textarea,select{width:100%;background:rgba(255,255,255,0.04);
+  border:1px solid var(--border2);border-radius:var(--r);color:var(--text);
+  font-family:var(--font-body);font-size:13px;padding:9px 12px;
+  transition:border-color 0.18s,background 0.18s;outline:none;}
+input:focus,textarea:focus,select:focus{border-color:rgba(0,212,255,0.45);background:rgba(0,212,255,0.03);}
+input::placeholder,textarea::placeholder{color:var(--text3);}
+textarea{resize:vertical;min-height:68px;line-height:1.55;}
+select option{background:#121828;}
+label.field-lbl{display:block;font-size:11px;color:var(--text3);font-weight:500;margin-bottom:5px;}
+.g2{display:grid;grid-template-columns:1fr 1fr;gap:12px;}
+.g3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;}
+.g4{display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:10px;}
+.gap{margin-bottom:14px;}
+.pill-wrap{display:flex;flex-wrap:wrap;gap:5px;}
+.pill{padding:4px 10px;border-radius:20px;font-size:11px;font-weight:500;
+  border:1px solid var(--border2);background:rgba(255,255,255,0.03);
+  cursor:pointer;transition:all 0.15s;color:var(--text3);user-select:none;font-family:var(--font-mono);}
+.pill:hover{border-color:rgba(0,212,255,0.35);color:var(--text2);}
+.pill.on{background:var(--cyan2);border-color:var(--cyan);color:var(--cyan);}
+.pill.amber{background:var(--amber2);border-color:var(--amber);color:var(--amber);}
+.pill.green{background:var(--green2);border-color:var(--green);color:var(--green);}
+.pill.red{background:var(--red2);border-color:var(--red);color:var(--red);}
+.pill.purple{background:var(--purple2);border-color:var(--purple);color:var(--purple);}
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:7px;
+  padding:10px 20px;border-radius:var(--r);font-family:var(--font-body);
+  font-size:13px;font-weight:600;cursor:pointer;transition:all 0.18s;border:none;}
+.btn-primary{background:linear-gradient(135deg,var(--cyan),#4f46e5);color:white;}
+.btn-primary:hover{opacity:0.88;transform:translateY(-1px);}
+.btn-primary:disabled{opacity:0.4;cursor:not-allowed;transform:none;}
+.btn-ghost{background:rgba(255,255,255,0.05);border:1px solid var(--border2);color:var(--text2);}
+.btn-ghost:hover{background:rgba(255,255,255,0.09);color:var(--text);}
+.btn-ghost:disabled{opacity:0.4;cursor:not-allowed;}
+.toggle-row{display:flex;align-items:center;justify-content:space-between;gap:8px;}
+.toggle-lbl{font-size:12px;color:var(--text2);}
+.tog{width:34px;height:19px;border-radius:10px;background:rgba(255,255,255,0.1);cursor:pointer;position:relative;transition:background 0.2s;flex-shrink:0;}
+.tog.on{background:rgba(0,212,255,0.55);}
+.tog::after{content:'';position:absolute;width:13px;height:13px;border-radius:50%;background:white;top:3px;left:3px;transition:left 0.18s;}
+.tog.on::after{left:18px;}
+.dot-stream{display:inline-block;}
+.dot-stream::after{content:'...';animation:dots 1.2s steps(4,end) infinite;}
+@keyframes dots{0%,20%{content:''}40%{content:'.'}60%{content:'..'}80%,100%{content:'...'}}
+.blink-cur{display:inline-block;width:7px;height:14px;background:var(--cyan);border-radius:2px;animation:blink .7s step-end infinite;vertical-align:middle;margin-left:2px;}
+@keyframes blink{0%,100%{opacity:1}50%{opacity:0}}
+.badge{display:inline-flex;align-items:center;gap:5px;padding:3px 10px;border-radius:20px;font-size:11px;font-weight:600;font-family:var(--font-mono);}
+.badge-low{background:var(--green2);color:var(--green);border:1px solid rgba(52,211,153,0.3);}
+.badge-mod{background:var(--amber2);color:var(--amber);border:1px solid rgba(245,166,35,0.3);}
+.badge-high{background:var(--red2);color:var(--red);border:1px solid rgba(248,113,113,0.3);}
+.badge-info{background:var(--cyan2);color:var(--cyan);border:1px solid rgba(0,212,255,0.3);}
+.drug-table{width:100%;border-collapse:collapse;font-size:12.5px;}
+.drug-table th{font-family:var(--font-mono);font-size:9.5px;letter-spacing:1.5px;text-transform:uppercase;color:var(--text3);padding:8px 12px;border-bottom:1px solid var(--border);text-align:left;font-weight:500;}
+.drug-table td{padding:9px 12px;border-bottom:1px solid rgba(255,255,255,0.04);font-family:var(--font-mono);color:var(--text2);}
+.drug-table tr:last-child td{border-bottom:none;}
+.drug-table tr:hover td{background:rgba(255,255,255,0.02);}
+.drug-name{color:var(--text)!important;font-weight:500;}
+.drug-dose{color:var(--cyan)!important;}
+.drug-range{color:var(--text3)!important;font-size:11px;}
+.check-item{display:flex;align-items:flex-start;gap:10px;padding:11px 14px;border-radius:var(--r);border:1px solid var(--border);background:rgba(255,255,255,0.02);cursor:pointer;transition:background 0.14s;margin-bottom:6px;}
+.check-item:hover{background:rgba(255,255,255,0.04);}
+.check-item.done{opacity:0.45;}
+.check-box{width:18px;height:18px;border-radius:4px;border:1.5px solid rgba(0,212,255,0.4);flex-shrink:0;margin-top:1px;display:flex;align-items:center;justify-content:center;font-size:10px;transition:all 0.15s;}
+.check-item.done .check-box{background:rgba(0,212,255,0.3);border-color:var(--cyan);}
+.check-txt{font-size:12.5px;color:var(--text2);line-height:1.45;}
+.check-item.done .check-txt{text-decoration:line-through;color:var(--text3);}
+.check-priority{font-size:10px;font-family:var(--font-mono);margin-top:2px;}
+.plan-out{background:var(--bg2);border:1px solid var(--border);border-radius:var(--r2);padding:20px;font-family:var(--font-mono);font-size:12px;line-height:1.75;color:var(--text2);white-space:pre-wrap;word-break:break-word;}
+.risk-bar-wrap{height:6px;background:rgba(255,255,255,0.07);border-radius:3px;overflow:hidden;margin:6px 0;}
+.risk-bar{height:100%;border-radius:3px;transition:width 0.5s ease;}
+::-webkit-scrollbar{width:4px;height:4px}
+::-webkit-scrollbar-track{background:transparent}
+::-webkit-scrollbar-thumb{background:var(--border2);border-radius:2px}
+.collapsible{overflow:hidden;transition:max-height 0.3s ease;}
+
+/* READING CARDS */
+.reading-card{background:var(--bg1);border:1px solid var(--border);border-radius:var(--r2);padding:16px;margin-bottom:10px;transition:border-color 0.15s;}
+.reading-card.high{border-left:3px solid var(--cyan);}
+.reading-card.med{border-left:3px solid var(--amber);}
+.reading-card.low{border-left:3px solid rgba(255,255,255,0.1);}
+.ch-badge{display:inline-block;padding:2px 8px;border-radius:4px;font-family:var(--font-mono);font-size:10px;background:var(--cyan2);color:var(--cyan);margin-right:8px;}
+.board-tag{display:inline-block;padding:2px 7px;border-radius:4px;font-family:var(--font-mono);font-size:9px;background:var(--purple2);color:var(--purple);border:1px solid rgba(167,139,250,0.2);margin:2px 3px 2px 0;}
+.source-tag{display:inline-block;padding:2px 7px;border-radius:4px;font-family:var(--font-mono);font-size:9px;background:rgba(255,255,255,0.04);color:var(--text3);border:1px solid var(--border);margin:2px 3px 2px 0;}
+
+/* RESPONSIVE */
+@media(max-width:768px){
+  .nav{display:none!important;}
+  .bottom-nav{display:block!important;}
+  .content{padding-bottom:calc(68px + env(safe-area-inset-bottom));}
+  .page{padding:16px 14px;}
+  .page-title{font-size:18px;}
+  .g2,.g3,.g4{grid-template-columns:1fr!important;}
+  .preop-grid{grid-template-columns:1fr!important;}
+  .or-grid{grid-template-columns:1fr!important;}
+}
+@media(min-width:769px){
+  .bottom-nav{display:none!important;}
+}
+@media(max-width:900px){
+  .page{padding:16px;}
+}
+`;
+
+// ─── DRUG DATABASE ──────────────────────────────────────────────────────────
+const DRUG_DB = {
+  induction:[
+    {name:"Propofol",dose_lo:1.5,dose_hi:2.5,unit:"mg/kg",route:"IV",note:"Reduce 25-50% elderly/hemodynamically compromised"},
+    {name:"Etomidate",dose_lo:0.2,dose_hi:0.3,unit:"mg/kg",route:"IV",note:"Preferred for cardiac/hemodynamically unstable"},
+    {name:"Ketamine",dose_lo:1,dose_hi:2,unit:"mg/kg",route:"IV",note:"Dissociative; preserves airway reflexes"},
+    {name:"Midazolam",dose_lo:0.02,dose_hi:0.05,unit:"mg/kg",route:"IV",note:"Max 5mg; premedication/induction adjunct"},
+    {name:"Dexmedetomidine",dose_lo:0.5,dose_hi:1,unit:"mcg/kg",route:"IV over 10min",note:"Loading dose; use for awake intubation"},
+  ],
+  paralytic:[
+    {name:"Succinylcholine",dose_lo:1,dose_hi:1.5,unit:"mg/kg",route:"IV",note:"RSI; check for contraindications (burns >48h, crush, MH hx, denervation)"},
+    {name:"Rocuronium",dose_lo:0.6,dose_hi:1.2,unit:"mg/kg",route:"IV",note:"1.2 mg/kg for RSI; reversed by Sugammadex"},
+    {name:"Vecuronium",dose_lo:0.08,dose_hi:0.1,unit:"mg/kg",route:"IV",note:"Intubating dose; maintenance 0.01-0.05 mg/kg"},
+    {name:"Cisatracurium",dose_lo:0.15,dose_hi:0.2,unit:"mg/kg",route:"IV",note:"Hofmann elimination; preferred renal/hepatic failure"},
+  ],
+  reversal:[
+    {name:"Sugammadex",dose_lo:2,dose_hi:16,unit:"mg/kg",route:"IV",note:"2mg/kg mod block; 4mg/kg deep block; 16mg/kg immediate RSI reversal"},
+    {name:"Neostigmine",dose_lo:0.03,dose_hi:0.07,unit:"mg/kg",route:"IV",note:"Max 5mg; always pair with glycopyrrolate"},
+    {name:"Glycopyrrolate",dose_lo:0.008,dose_hi:0.02,unit:"mg/kg",route:"IV",note:"Give with neostigmine to block muscarinic effects"},
+  ],
+  opioid:[
+    {name:"Fentanyl",dose_lo:1,dose_hi:3,unit:"mcg/kg",route:"IV",note:"Induction adjunct; 25-50mcg bolus intraop"},
+    {name:"Hydromorphone",dose_lo:0.01,dose_hi:0.02,unit:"mg/kg",route:"IV",note:"PACU pain; longer acting than fentanyl"},
+    {name:"Morphine",dose_lo:0.05,dose_hi:0.1,unit:"mg/kg",route:"IV",note:"PACU; longer duration; histamine release"},
+    {name:"Remifentanil gtt",dose_lo:0.05,dose_hi:0.25,unit:"mcg/kg/min",route:"IV gtt",note:"Ultra-short; always run with propofol infusion"},
+    {name:"Ketamine (adjunct)",dose_lo:0.1,dose_hi:0.5,unit:"mg/kg",route:"IV",note:"Subanesthetic analgesic dose"},
+  ],
+  vasoactive:[
+    {name:"Ephedrine",dose_lo:5,dose_hi:10,unit:"mg",route:"IV bolus",note:"Hypotension with bradycardia; fixed dose 5-10mg"},
+    {name:"Phenylephrine",dose_lo:50,dose_hi:100,unit:"mcg",route:"IV bolus",note:"Pure alpha; hypotension; use fixed mcg not mg/kg"},
+    {name:"Epinephrine",dose_lo:0.01,dose_hi:0.01,unit:"mg/kg",route:"IV",note:"Anaphylaxis: 0.01 mg/kg IV (max 1mg)"},
+    {name:"Vasopressin",dose_lo:0,dose_hi:0,unit:"—",route:"IV",note:"Fixed dose 40U; vasodilatory shock adjunct"},
+    {name:"Atropine",dose_lo:0.01,dose_hi:0.02,unit:"mg/kg",route:"IV",note:"Min 0.1mg; max 3mg; symptomatic bradycardia"},
+    {name:"Labetalol",dose_lo:0.1,dose_hi:0.25,unit:"mg/kg",route:"IV",note:"HTN management; up to 300mg total"},
+    {name:"Norepinephrine gtt",dose_lo:0.01,dose_hi:0.3,unit:"mcg/kg/min",route:"IV gtt",note:"First-line vasopressor; distributive shock"},
+  ],
+  antiemetic:[
+    {name:"Ondansetron",dose_lo:0.1,dose_hi:0.15,unit:"mg/kg",route:"IV",note:"Max 4mg; give 30min before end of case"},
+    {name:"Dexamethasone",dose_lo:0.1,dose_hi:0.15,unit:"mg/kg",route:"IV",note:"4-8mg; give at induction; also analgesic effect"},
+    {name:"Metoclopramide",dose_lo:0.1,dose_hi:0.15,unit:"mg/kg",route:"IV",note:"Max 10mg; prokinetic; EPS risk"},
+    {name:"Scopolamine patch",dose_lo:0,dose_hi:0,unit:"—",route:"Transdermal",note:"Fixed 1 patch behind ear; apply night before"},
+    {name:"Droperidol",dose_lo:0,dose_hi:0,unit:"—",route:"IV",note:"Fixed 0.625mg IV; QTc prolongation — use low dose only"},
+  ],
+  local:[
+    {name:"Bupivacaine 0.5%",dose_lo:0,dose_hi:2.5,unit:"mg/kg",route:"Infiltration/block",note:"MAX 2.5mg/kg plain; 3mg/kg with epi. Cardiotoxic — use lipid emulsion for LAST"},
+    {name:"Ropivacaine 0.5%",dose_lo:0,dose_hi:3,unit:"mg/kg",route:"Infiltration/block",note:"MAX 3mg/kg; safer cardiac profile than bupivacaine"},
+    {name:"Lidocaine 2%",dose_lo:0,dose_hi:4.5,unit:"mg/kg",route:"Infiltration",note:"MAX 4.5mg/kg plain; 7mg/kg with epi"},
+    {name:"Lidocaine IV",dose_lo:1.5,dose_hi:2,unit:"mg/kg",route:"IV bolus",note:"Induction adjunct; blunts laryngoscopy; antiarrhythmic"},
+    {name:"Chloroprocaine 3%",dose_lo:0,dose_hi:11,unit:"mg/kg",route:"Spinal/epidural",note:"Short-acting ester; max 11mg/kg; ideal outpatient spinal"},
+  ],
+  maintenance:[
+    {name:"Propofol TIVA",dose_lo:25,dose_hi:75,unit:"mcg/kg/min",route:"IV gtt",note:"Titrate to effect; BIS 40-60 target"},
+    {name:"Dexmedetomidine gtt",dose_lo:0.2,dose_hi:0.7,unit:"mcg/kg/hr",route:"IV gtt",note:"Sedation/analgesia adjunct; minimal resp depression"},
+  ],
+  emergency:[
+    {name:"Succinylcholine (RSI)",dose_lo:1.5,dose_hi:1.5,unit:"mg/kg",route:"IV",note:"Emergency RSI dose"},
+    {name:"Epinephrine (anaphylaxis)",dose_lo:0.01,dose_hi:0.01,unit:"mg/kg",route:"IV",note:"MAX 1mg; repeat q3-5min"},
+    {name:"Sodium Bicarbonate",dose_lo:1,dose_hi:1,unit:"mEq/kg",route:"IV",note:"Metabolic acidosis; hyperkalemia with succinylcholine"},
+    {name:"Calcium Chloride",dose_lo:10,dose_hi:20,unit:"mg/kg",route:"IV slow",note:"Hyperkalemia, hypocalcemia, CCB overdose"},
+    {name:"Dantrolene (MH)",dose_lo:2.5,dose_hi:2.5,unit:"mg/kg",route:"IV",note:"MH: 2.5mg/kg q5min; max 10mg/kg; mix 20mg/60mL sterile water"},
+    {name:"Intralipid 20% (LAST)",dose_lo:1.5,dose_hi:1.5,unit:"mL/kg",route:"IV bolus",note:"LAST: 1.5mL/kg bolus then 0.25mL/kg/min infusion; max 12mL/kg"},
+  ]
+};
+
+const CASE_TYPES = ["Laparoscopic","Open Abdominal","Cardiac / CABG","Thoracic / VATS","Neurosurgery / Craniotomy","Spine","Orthopedic / Joint","Vascular / Aortic","OB / C-Section","Obstetric Neuraxial","ENT / Airway","Ophthalmologic","Urologic / Robotic","Plastics / Burns","Trauma / Emergency","Pediatric","Ambulatory / Day Surgery","Endoscopy / Scope"];
+
+// ─── READING DATABASE ───────────────────────────────────────────────────────
+// ch: chapter label  title: chapter name  why: relevance note
+// board: ABA content categories  yield: "high"|"med"|"low"
+const RDB = {
+  core: {
+    mm:[
+      {ch:"Ch 24",title:"Preoperative Assessment & Premedication",board:["Pre-op Evaluation","Risk Stratification"],yield:"high",why:"Foundation for every case — NPO, ASA classification, risk indices, premedication"},
+      {ch:"Ch 25",title:"Airway Management",board:["Airway Management"],yield:"high",why:"ASA difficult airway algorithm, RSI, video laryngoscopy, fiberoptic, supraglottic — every case"},
+      {ch:"Ch 43",title:"Anesthetic Complications",board:["Patient Safety","Complications"],yield:"high",why:"MH, awareness under anesthesia, LAST, anaphylaxis — board exam perennials"},
+      {ch:"Ch 9",title:"Neuromuscular Blocking Agents",board:["Pharmacology","NMB"],yield:"high",why:"Depolarizing vs non-depolarizing, reversal, residual blockade, TOF monitoring"},
+      {ch:"Ch 44",title:"Postanesthesia Care",board:["PACU","Postoperative"],yield:"med",why:"PACU complications, emergence, pain management, discharge criteria"},
+    ],
+    barash:[
+      {ch:"Ch 20",title:"Preoperative Patient Assessment & Management",board:["Pre-op Evaluation"],yield:"high",why:"NPO guidelines, RCRI, Apfel score, premedication — universal pre-op foundation"},
+      {ch:"Ch 21",title:"Airway Management",board:["Airway Management"],yield:"high",why:"ASA difficult airway algorithm, RSI technique, awake fiberoptic, can't intubate/oxygenate"},
+      {ch:"Ch 18",title:"Neuromuscular Blocking Drugs & Reversal Agents",board:["Pharmacology","NMB"],yield:"high",why:"Mechanism, pharmacokinetics, TOF, sugammadex vs neostigmine, residual neuromuscular blockade"},
+    ],
+    jaffe:[],
+  },
+  "Laparoscopic":{
+    mm:[
+      {ch:"Ch 18",title:"Respiratory Physiology & Anesthesia",board:["Pulmonary Physiology"],yield:"high",why:"CO2 insufflation → hypercarbia; Trendelenburg effects on FRC, compliance, V/Q"},
+      {ch:"Ch 19",title:"Cardiovascular Physiology & Anesthesia",board:["Cardiovascular Physiology"],yield:"med",why:"Hemodynamic effects of pneumoperitoneum: ↑SVR, ↓venous return at high IAP"},
+      {ch:"Ch 41",title:"Ambulatory Anesthesia",board:["Ambulatory"],yield:"high",why:"Many lap cases are outpatient — PONV prophylaxis, discharge criteria, opioid-sparing"},
+    ],
+    barash:[
+      {ch:"Ch 32",title:"Anesthesia for Laparoscopic & Robotic Surgery",board:["General Anesthesia"],yield:"high",why:"Insufflation physiology, Trendelenburg positioning effects, PONV, airway selection"},
+    ],
+    jaffe:[
+      {ch:"General Surgery Ch 1-2",title:"Laparoscopic Surgery (Chole, Appendectomy, Nissen)",board:["Subspecialty"],yield:"high",why:"Surgical procedure overview, anesthetic setup, positioning considerations"},
+    ],
+    boards:["CO2 insufflation → hypercarbia","Pneumoperitoneum: ↑SVR ↓venous return","PONV — Apfel score 4 risk factors","Trendelenburg: ↑ICP ↑airway pressure","ETT preferred over LMA for laparoscopic"],
+  },
+  "Cardiac / CABG":{
+    mm:[
+      {ch:"Ch 19",title:"Cardiovascular Physiology & Anesthesia",board:["Cardiovascular Physiology"],yield:"high",why:"CO, SVR/PVR, myocardial O2 supply-demand, cardiac cycle — foundation of cardiac anes"},
+      {ch:"Ch 27",title:"Anesthesia for Cardiovascular Surgery",board:["Cardiac Anesthesia"],yield:"high",why:"CPB physiology, cardioplegia, TEE indications, heparinization/protamine, weaning from bypass"},
+      {ch:"Ch 26",title:"Cardiovascular Monitoring",board:["Monitoring"],yield:"high",why:"Invasive hemodynamic monitoring: A-line, CVP, PA catheter, TEE basics"},
+    ],
+    barash:[
+      {ch:"Ch 29",title:"Cardiac Anesthesia",board:["Cardiac Anesthesia"],yield:"high",why:"High-dose opioid induction, CPB management, post-bypass weaning, inotrope selection, VADs"},
+      {ch:"Ch 7",title:"Cardiovascular Physiology & Pharmacology of the Failing Heart",board:["Cardiovascular Physiology"],yield:"high",why:"Heart failure physiology, inotropes (dobutamine, milrinone), vasopressors — critical for cardiac"},
+    ],
+    jaffe:[
+      {ch:"Cardiac Surgery Section",title:"CABG & Valve Replacement — Anesthetic Considerations",board:["Cardiac Anesthesia"],yield:"high",why:"Case-specific management: CABG on-pump vs off-pump, aortic/mitral valve repair/replacement"},
+    ],
+    boards:["CPB physiology (hypothermia, hemodilution)","Protamine reactions (anaphylaxis, ↑PVR)","Myocardial O2 supply-demand balance","TEE basic views (ME 4-chamber, transgastric)","Inotropes: dobutamine vs milrinone vs epi"],
+  },
+  "Thoracic / VATS":{
+    mm:[
+      {ch:"Ch 28",title:"Anesthesia for Thoracic Surgery",board:["Thoracic Anesthesia"],yield:"high",why:"OLV management, DLT sizing/placement, bronchial blocker, HPV, hypoxemia rescue strategies"},
+      {ch:"Ch 18",title:"Respiratory Physiology & Anesthesia",board:["Pulmonary Physiology"],yield:"high",why:"HPV mechanism, V/Q mismatch in lateral decubitus, FRC changes, OLV physiology"},
+    ],
+    barash:[
+      {ch:"Ch 30",title:"Thoracic Anesthesia",board:["Thoracic Anesthesia"],yield:"high",why:"DLT vs bronchial blocker selection, OLV indications, VATS-specific management, post-op pain"},
+    ],
+    jaffe:[
+      {ch:"Thoracic Surgery Section",title:"Lobectomy, VATS, Pneumonectomy — Anesthetic Considerations",board:["Thoracic Anesthesia"],yield:"high",why:"Procedure-specific DLT placement, OLV strategy, mediastinal manipulation management"},
+    ],
+    boards:["HPV: inhibited by volatile agents, hypoxia, ↑PVR","OLV hypoxemia → CPAP operative lung / PEEP non-op","DLT sizing: left-sided preferred; right for L mainstem","Indications for lung isolation (8 indications)","VATS vs thoracotomy anesthetic differences"],
+  },
+  "Neurosurgery / Craniotomy":{
+    mm:[
+      {ch:"Ch 20",title:"Neurophysiology & Anesthesia",board:["Neurophysiology"],yield:"high",why:"CBF, ICP, CPP, cerebral autoregulation (MAP 50-150), CO2 reactivity — cornerstone of neuro anes"},
+      {ch:"Ch 29",title:"Anesthesia for Neurosurgery",board:["Neuro Anesthesia"],yield:"high",why:"Brain relaxation strategies, ICP management, wake craniotomy, neuromonitoring, staged emergence"},
+    ],
+    barash:[
+      {ch:"Ch 36",title:"Anesthesia for Neurosurgery",board:["Neuro Anesthesia"],yield:"high",why:"Craniotomy management: brain relaxation, induced hypotension, TIVA vs volatile, emergence neuro exam"},
+      {ch:"Ch 5",title:"Neuropharmacology",board:["Neurophysiology","Pharmacology"],yield:"high",why:"Volatile vs IV effects on CBF, CMRO2, ICP — critical drug selection for neuro cases"},
+      {ch:"Ch 12",title:"Nervous System Monitoring",board:["Monitoring"],yield:"high",why:"EEG, SSEP, MEP: indications, drug effects, interpretation of changes"},
+    ],
+    jaffe:[
+      {ch:"Neurological Surgery Section",title:"Craniotomy — Anesthetic Considerations",board:["Neuro Anesthesia"],yield:"high",why:"Position-specific management: supine/sitting/prone craniotomy, VAE risk, pin placement response"},
+    ],
+    boards:["Cerebral autoregulation (MAP 50-150 mmHg)","ICP management: mannitol 0.25-1g/kg, hyperventilation PaCO2 30-35","SSEP/MEP: volatile agents ↓amplitude, TIVA preferred","Mayfield pin: 2 mcg/kg fentanyl or 0.5 mg/kg ketamine","Avoid N2O: air embolism, ↑CMRO2, pneumocephalus"],
+  },
+  "Spine":{
+    mm:[
+      {ch:"Ch 20",title:"Neurophysiology & Anesthesia",board:["Neurophysiology"],yield:"high",why:"Spinal cord blood flow, autoregulation, somatosensory and motor pathway anatomy"},
+      {ch:"Ch 29",title:"Anesthesia for Neurosurgery",board:["Neuro Anesthesia"],yield:"med",why:"Prone positioning physiology, neuromonitoring drug restrictions, blood conservation"},
+    ],
+    barash:[
+      {ch:"Ch 36",title:"Anesthesia for Neurosurgery",board:["Neuro Anesthesia"],yield:"high",why:"Spine surgery: prone positioning, SSEP/MEP management, controlled hypotension, ION prevention"},
+      {ch:"Ch 12",title:"Nervous System Monitoring",board:["Monitoring"],yield:"high",why:"SSEP/MEP: which drugs to avoid, what constitutes an alert, management of signal changes"},
+    ],
+    jaffe:[
+      {ch:"Neurological Surgery — Spine",title:"Cervical/Lumbar/Thoracic Spine Anesthetic Considerations",board:["Neuro Anesthesia"],yield:"high",why:"Procedure-specific: decompression, fusion, instrumentation; airway in cervical cases"},
+    ],
+    boards:["Prone positioning: ↓FRC, ↑airway pressure, ↓venous return","Ischemic optic neuropathy (ION): prone, prolonged, hypotension, anemia","SSEP: amplitude ↓50% or latency ↑10% = alert criterion","Controlled hypotension: MAP 50-70 if neuro baselines stable","Succinylcholine: avoid if MEP monitoring (confounds baseline)"],
+  },
+  "Orthopedic / Joint":{
+    mm:[
+      {ch:"Ch 32",title:"Anesthesia for Orthopedic Surgery",board:["Orthopedic Anesthesia"],yield:"high",why:"Tourniquet physiology, bone cement implantation syndrome, fat embolism, DVT prophylaxis timing"},
+      {ch:"Ch 16",title:"Spinal, Epidural & Caudal Anesthesia",board:["Regional","Neuraxial"],yield:"high",why:"Spinal for TJR — hyperbaric bupivacaine dosing, level, complications, management of high spinal"},
+      {ch:"Ch 17",title:"Peripheral Nerve Blocks",board:["Regional","Peripheral Blocks"],yield:"high",why:"Interscalene (shoulder), femoral/adductor canal (knee), popliteal sciatic (ankle/foot) blocks"},
+    ],
+    barash:[
+      {ch:"Ch 33",title:"Anesthesia for Orthopedic Surgery",board:["Orthopedic Anesthesia"],yield:"high",why:"Neuraxial vs GA outcomes in TJR, fat embolism diagnosis/treatment, cement reaction"},
+      {ch:"Ch 25",title:"Peripheral Nerve Blocks",board:["Regional"],yield:"high",why:"Ultrasound-guided technique, local anesthetic selection, systemic toxicity prevention"},
+    ],
+    jaffe:[
+      {ch:"Orthopedic Surgery Section",title:"THA/TKA/Shoulder Arthroplasty — Anesthetic Considerations",board:["Orthopedic Anesthesia"],yield:"high",why:"Case-specific regional vs GA decision, nerve block selection, blood conservation, DVT"},
+    ],
+    boards:["Tourniquet: ↑SVR ↑MAP ↑pain; release → ↓SVR reperfusion","Bone cement implantation syndrome: ↓BP ↓SpO2 ↓CO","Fat embolism triad: hypoxia + confusion + petechiae","DVT prophylaxis: timing relative to neuraxial (12h LMWH)","Adductor canal block vs femoral: quad strength preservation"],
+  },
+  "Vascular / Aortic":{
+    mm:[
+      {ch:"Ch 19",title:"Cardiovascular Physiology & Anesthesia",board:["Cardiovascular Physiology"],yield:"high",why:"Aortic cross-clamp hemodynamics: ↑afterload at clamp, ↓afterload at release, myocardial stress"},
+      {ch:"Ch 26",title:"Cardiovascular Monitoring",board:["Monitoring"],yield:"high",why:"Invasive hemodynamic monitoring for major vascular: A-line pre-induction, TEE, CVP/PA catheter"},
+    ],
+    barash:[
+      {ch:"Ch 31",title:"Anesthesia for Vascular Surgery",board:["Vascular Anesthesia"],yield:"high",why:"Aortic cross-clamp management, renal/spinal cord protection, EVAR vs open AAA, carotid CEA"},
+      {ch:"Ch 7",title:"Cardiovascular Physiology & Pharmacology of the Failing Heart",board:["Cardiovascular Physiology"],yield:"high",why:"Vasoactive drug pharmacology essential for perioperative hemodynamic management"},
+    ],
+    jaffe:[
+      {ch:"Vascular Surgery Section",title:"AAA, Carotid Endarterectomy, Peripheral Vascular — Anesthetic Considerations",board:["Vascular Anesthesia"],yield:"high",why:"Case-specific: AAA cross-clamp strategy, CEA awake vs GA, EVAR anesthetic management"},
+    ],
+    boards:["Cross-clamp: ↑SVR ↑afterload → nitroprusside/nitroglycerin","Unclamp: ↓SVR ↓BP → vasopressin, calcium, volume","CEA: awake vs GA; regional allows neuro monitoring","Renal protection: maintain MAP, mannitol, N-acetylcysteine","Spinal cord ischemia: CSF drainage, permissive HTN"],
+  },
+  "OB / C-Section":{
+    mm:[
+      {ch:"Ch 34",title:"Anesthesia for the Pregnant Patient",board:["OB Anesthesia","Maternal Physiology"],yield:"high",why:"Physiologic changes of pregnancy: ↓FRC ↑CO ↑BV ↓MAP ↑aspiration risk — drug pharmacokinetics"},
+      {ch:"Ch 35",title:"Anesthesia for Obstetric Surgery",board:["OB Anesthesia"],yield:"high",why:"C-section: spinal vs GA, spinal hypotension management, RSI in OB, neonatal resuscitation"},
+      {ch:"Ch 16",title:"Spinal, Epidural & Caudal Anesthesia",board:["Regional","Neuraxial"],yield:"high",why:"Spinal technique for C-section, hyperbaric bupivacaine 0.75%, high spinal management"},
+    ],
+    barash:[
+      {ch:"Ch 38",title:"Obstetric Anesthesia",board:["OB Anesthesia"],yield:"high",why:"Comprehensive: C-section spinal/epidural/GA, maternal cardiac arrest, failed airway in pregnancy"},
+    ],
+    jaffe:[
+      {ch:"Obstetrics Section",title:"Cesarean Section — Anesthetic Considerations",board:["OB Anesthesia"],yield:"high",why:"Elective vs urgent vs crash C-section anesthetic management and decision tree"},
+    ],
+    boards:["Aortocaval compression: LEFT lateral tilt until delivery","Spinal hypotension: phenylephrine first-line (vs ephedrine)","High spinal management: O2, vasopressors, IVF, reassurance","OB failed airway: OAA/DAS guidelines, can't intubate plan","Maternal aspiration: ↑gastric volume ↑acidity in pregnancy"],
+  },
+  "Obstetric Neuraxial":{
+    mm:[
+      {ch:"Ch 34",title:"Anesthesia for the Pregnant Patient",board:["OB Anesthesia","Maternal Physiology"],yield:"high",why:"Physiology of pregnancy — essential context for every OB neuraxial decision"},
+      {ch:"Ch 35",title:"Anesthesia for Obstetric Surgery",board:["OB Anesthesia"],yield:"high",why:"Labor epidural management, epidural top-up for C-section, PDPH management"},
+      {ch:"Ch 16",title:"Spinal, Epidural & Caudal Anesthesia",board:["Regional","Neuraxial"],yield:"high",why:"Epidural placement technique, test dose, CSE, complications — labor neuraxial foundation"},
+    ],
+    barash:[
+      {ch:"Ch 38",title:"Obstetric Anesthesia",board:["OB Anesthesia"],yield:"high",why:"Labor epidural, CSE, intrathecal opioids, PDPH diagnosis and EBP, high neuraxial block"},
+    ],
+    jaffe:[
+      {ch:"Obstetrics Section",title:"Labor Analgesia — Anesthetic Considerations",board:["OB Anesthesia"],yield:"high",why:"Epidural vs CSE for labor, patient selection, inadequate block management"},
+    ],
+    boards:["PDPH: positional HA, bilateral tinnitus; EBP 10-20mL autologous blood","Epidural test dose: Lido 1.5% + epi 1:200k 3mL — intravascular → HR↑15","CSE: faster onset, better sacral, less motor block than epidural alone","Intrathecal morphine side effects: pruritus, N/V, respiratory depression","High neuraxial: Trendelenburg, IVF, vasopressors, assist ventilation if needed"],
+  },
+  "ENT / Airway":{
+    mm:[
+      {ch:"Ch 25",title:"Airway Management",board:["Airway Management"],yield:"high",why:"Shared airway management, awake fiberoptic technique, difficult airway in ENT/head-neck"},
+      {ch:"Ch 31",title:"Anesthesia for ENT Surgery",board:["ENT Anesthesia"],yield:"high",why:"Microlaryngoscopy, laser precautions, tonsillectomy, post-tonsillectomy hemorrhage, jet ventilation"},
+    ],
+    barash:[
+      {ch:"Ch 40",title:"Anesthesia for Eye, Ear, Nose & Throat Surgery",board:["ENT Anesthesia"],yield:"high",why:"Shared airway cases, laser surgery fire triangle, microlaryngoscopy tubes, airway tumor management"},
+    ],
+    jaffe:[
+      {ch:"Otolaryngology Section",title:"Microlaryngoscopy, Tonsillectomy, Airway Tumor — Anesthetic Considerations",board:["ENT Anesthesia","Airway Management"],yield:"high",why:"Procedure-specific considerations: tube selection, ventilation strategy, shared airway communication"},
+    ],
+    boards:["Airway fire: FiO2 <0.30 for laser; fire triangle = oxidizer+fuel+ignition","Post-tonsillectomy bleed: full stomach → RSI, may have blood in airway","Jet ventilation: high-frequency jetting, Venturi principle, CO2 retention risk","Microlaryngoscopy tube: MLT 5.0-6.0, small cuffed ETT","Awake fiberoptic: topicalization (ALAN), sedation (dexmed + small doses)"],
+  },
+  "Pediatric":{
+    mm:[
+      {ch:"Ch 36",title:"Pediatric Anesthesia",board:["Pediatric Anesthesia"],yield:"high",why:"Peds physiology (airway anatomy, CV reserve, resp), inhalation induction, weight-based dosing, emergence delirium"},
+    ],
+    barash:[
+      {ch:"Ch 37",title:"Anesthesia for Pediatric Surgery",board:["Pediatric Anesthesia"],yield:"high",why:"Neonatal vs infant vs child physiology, sevoflurane induction, post-op stridor, laryngospasm, croup"},
+    ],
+    jaffe:[
+      {ch:"Pediatric Surgery Section",title:"Pediatric Anesthetic Considerations",board:["Pediatric Anesthesia"],yield:"high",why:"Case-specific peds anesthesia: pyloric stenosis, TEF, intussusception, hernia, tonsillectomy"},
+    ],
+    boards:["ETT sizing: (age/4)+4 uncuffed; (age/4)+3.5 cuffed — Cormack-Lehane","Laryngospasm: CPAP jaw thrust; break with succinylcholine 2mg/kg IV or 4mg/kg IM","Emergence delirium: dexmed 0.5mcg/kg or propofol 0.5mg/kg at end","Bradycardia: vagally-mediated; atropine 0.02mg/kg IV (min 0.1mg)","Peds airway: more cephalad/anterior larynx, large occiput → sniffing position critical"],
+  },
+  "Ambulatory / Day Surgery":{
+    mm:[
+      {ch:"Ch 41",title:"Ambulatory Anesthesia",board:["Ambulatory Anesthesia"],yield:"high",why:"Agent selection for fast-tracking, PONV prophylaxis, discharge criteria, opioid-minimizing strategies"},
+      {ch:"Ch 44",title:"Postanesthesia Care",board:["PACU"],yield:"med",why:"Aldrete score, PACU bypass criteria (fast-track), common PACU problems: pain, N/V, shivering"},
+    ],
+    barash:[
+      {ch:"Ch 27",title:"Anesthesia for Ambulatory Surgery",board:["Ambulatory Anesthesia"],yield:"high",why:"Case selection criteria, short-acting agents, regional for day surgery, PONV triple prophylaxis"},
+    ],
+    jaffe:[
+      {ch:"General Surgery — Ambulatory",title:"Outpatient General Surgery Anesthetic Considerations",board:["Ambulatory Anesthesia"],yield:"high",why:"Day surgery logistics, appropriate case selection, discharge readiness assessment"},
+    ],
+    boards:["PONV triple prophylaxis: ondansetron + dexamethasone + scopolamine","Aldrete score: activity/respiration/circulation/consciousness/O2 — 9-10 for discharge","Fast-track PACU bypass: Aldrete ≥12 modified (White-Song criteria)","Propofol vs volatile: propofol associated with ↓PONV","Regional anesthesia: extends analgesia, reduces opioid requirement, ↓PONV"],
+  },
+  "Trauma / Emergency":{
+    mm:[
+      {ch:"Ch 40",title:"Anesthesia for the Trauma Patient",board:["Trauma Anesthesia"],yield:"high",why:"RSI drug selection, damage control surgery, permissive hypotension, lethal triad management"},
+      {ch:"Ch 25",title:"Airway Management",board:["Airway Management"],yield:"high",why:"RSI technique in trauma, video laryngoscopy, cricothyrotomy — every technique needed"},
+    ],
+    barash:[
+      {ch:"Ch 26",title:"Trauma and Burns",board:["Trauma Anesthesia"],yield:"high",why:"Initial trauma management, MTP, TXA, burn resuscitation, Parkland formula, inhalation injury"},
+    ],
+    jaffe:[
+      {ch:"General Surgery — Emergency",title:"Trauma & Emergency Surgery Anesthetic Considerations",board:["Trauma Anesthesia"],yield:"high",why:"Emergent case setup, FAST exam, damage control philosophy, prioritizing airway in hemorrhage"},
+    ],
+    boards:["Permissive hypotension: MAP 50-65 blunt trauma; normotensive for TBI/penetrating","MTP 1:1:1 (pRBC:FFP:platelets); activate early — don't wait for labs","Lethal triad: hypothermia + acidosis + coagulopathy — prevent/treat all three","TXA: 1g IV over 10min within 3h of injury → reduces mortality","Ketamine: preferred induction in trauma (hemodynamic stability, bronchodilation)"],
+  },
+  "Urologic / Robotic":{
+    mm:[
+      {ch:"Ch 33",title:"Anesthesia for Urologic Surgery",board:["Urologic Anesthesia"],yield:"high",why:"TURP syndrome, robotic steep Trendelenburg physiology, spinal for TURP, bladder irrigation fluids"},
+    ],
+    barash:[
+      {ch:"Ch 34",title:"Anesthesia for Urologic Surgery",board:["Urologic Anesthesia"],yield:"high",why:"Robotic prostatectomy: Trendelenburg+pneumoperitoneum effects, fluid restriction, CO2 management"},
+    ],
+    jaffe:[
+      {ch:"Urology Section",title:"Robotic Prostatectomy, TURP, Nephrectomy — Anesthetic Considerations",board:["Urologic Anesthesia"],yield:"high",why:"Case-specific: fluid monitoring, positioning complications, robot docking precautions"},
+    ],
+    boards:["TURP syndrome: dilutional hyponatremia from glycine irrigation absorption","Symptoms of TURP syndrome: confusion, bradycardia, hyponatremia (Na<120)","Steep Trendelenburg: ↑ICP ↑IOP ↑airway pressure ↓venous return","ETT preferred over LMA for robotic: ↓risk of displacement in Trendelenburg","Fluid restriction in robotic: improves surgical view, reduces extravasation"],
+  },
+  "Endoscopy / Scope":{
+    mm:[
+      {ch:"Ch 42",title:"Nonoperating Room Anesthesia & Office-Based",board:["NORA","MAC"],yield:"high",why:"NORA challenges: remote location, limited resources, aspiration risk, propofol sedation depth"},
+    ],
+    barash:[
+      {ch:"Ch 39",title:"Anesthesia for Gastrointestinal Endoscopy",board:["NORA","MAC"],yield:"high",why:"MAC vs deep sedation, propofol dosing, airway management, ERCP-specific challenges (prone)"},
+    ],
+    jaffe:[
+      {ch:"Out-of-OR Section",title:"ERCP & GI Endoscopy Anesthetic Considerations",board:["NORA"],yield:"high",why:"Endoscopy suite setup, prone ERCP airway decision, CO2 sedation concerns, aspiration risk"},
+    ],
+    boards:["Sedation continuum: minimal → moderate → deep → GA (always be one level above trained for)","Propofol: no reversal agent — must monitor continuously","ERCP prone: consider ETT for airway protection; CO2 insufflation vs air","Aspiration risk: NPO status, GERD, delayed gastric emptying → RSI if concern","NORA standards: same ASA monitoring standards apply regardless of location"],
+  },
+  "Ophthalmologic":{
+    mm:[
+      {ch:"Ch 30",title:"Anesthesia for Ophthalmologic Surgery",board:["Ophthalmic Anesthesia"],yield:"high",why:"Oculocardiac reflex, drugs affecting IOP, smooth emergence, N2O contraindication with intraocular gas"},
+    ],
+    barash:[
+      {ch:"Ch 40",title:"Anesthesia for Eye, Ear, Nose & Throat Surgery",board:["Ophthalmic Anesthesia"],yield:"high",why:"IOP physiology, retrobulbar block risks, smooth emergence importance, strabismus/cataract/vitreoretinal"},
+    ],
+    jaffe:[
+      {ch:"Ophthalmology Section",title:"Ophthalmic Surgery Anesthetic Considerations",board:["Ophthalmic Anesthesia"],yield:"high",why:"Procedure-specific: cataract (topical/MAC), vitreoretinal (GA/block), strabismus (OCR, MH risk)"},
+    ],
+    boards:["Oculocardiac reflex: trigeminovagal; traction → ↓HR → stop surgeon, atropine","Drugs that ↑IOP: succinylcholine, ketamine, N2O","Drugs that ↓IOP: propofol, volatile agents, opioids, acetazolamide","N2O CONTRAINDICATED if intraocular gas (SF6, C3F8) injected — expands gas cavity","Smooth emergence: IV lidocaine 1.5mg/kg before extubation to suppress cough"],
+  },
+  "Open Abdominal":{
+    mm:[
+      {ch:"Ch 16",title:"Spinal, Epidural & Caudal Anesthesia",board:["Regional","Neuraxial"],yield:"high",why:"Thoracic epidural for open abdominal: placement at T7-T9, maintenance, troubleshooting"},
+      {ch:"Ch 18",title:"Respiratory Physiology & Anesthesia",board:["Pulmonary Physiology"],yield:"med",why:"Lung-protective ventilation strategy, ARDS management, atelectasis in open abdominal"},
+    ],
+    barash:[
+      {ch:"Ch 24",title:"Spinal, Epidural & Caudal Anesthesia",board:["Regional"],yield:"high",why:"Thoracic epidural for open abdominal — technique, test dose, management, ERAS protocol integration"},
+    ],
+    jaffe:[
+      {ch:"General Surgery — Open Abdominal",title:"Colectomy, Whipple, Exploratory Lap — Anesthetic Considerations",board:["General Anesthesia"],yield:"high",why:"Fluid management, epidural integration, bowel prep electrolyte issues, estimated blood loss"},
+    ],
+    boards:["Thoracic epidural: T7-T9 placement, test dose, 0.0625% bupivacaine + fentanyl 2mcg/mL gtt","ERAS protocol: carbohydrate loading, multimodal analgesia, early mobilization, limit opioids","Goal-directed fluid therapy: minimize bowel edema, maintain organ perfusion","Lung-protective ventilation: TV 6-8mL/kg IBW, PEEP 5-8, plateau <30"],
+  },
+  "Plastics / Burns":{
+    mm:[
+      {ch:"Ch 40",title:"Anesthesia for the Trauma Patient",board:["Burns Anesthesia"],yield:"high",why:"Burns: Parkland formula, succinylcholine hyperkalemia risk, airway edema assessment, temperature"},
+    ],
+    barash:[
+      {ch:"Ch 26",title:"Trauma and Burns",board:["Burns Anesthesia"],yield:"high",why:"Burn resuscitation, inhalation injury airway management, succinylcholine contraindication timing, upregulated NMJ"},
+    ],
+    jaffe:[
+      {ch:"Plastic Surgery Section",title:"Burns & Reconstruction — Anesthetic Considerations",board:["Burns Anesthesia"],yield:"high",why:"Debridement, grafting, reconstruction; ketamine for dressing changes; temperature management"},
+    ],
+    boards:["Parkland: 4mL × kg × %TBSA; half in 8h, half in 16h (Lactated Ringer's)","Succinylcholine: SAFE first 24-48h; CONTRAINDICATED >48h (↑K+ via upregulated ACh receptors)","Inhalation injury: intubate early before edema; CO poisoning → 100% O2","Temperature: burn patients lose heat rapidly — warm OR >80°F, warm all fluids","Ketamine: ideal for serial debridements; preserves airway reflexes at low doses"],
+  },
+};
+
+// ─── COMORBIDITY-TRIGGERED CHAPTERS ────────────────────────────────────────
+const COMORBIDITY_DB = {
+  cardiac:{
+    mm:[{ch:"Ch 19",title:"Cardiovascular Physiology & Anesthesia",yield:"high",why:"Cardiac physiology for non-cardiac surgery: coronary reserve, heart failure, valve lesion implications"}],
+    barash:[{ch:"Ch 7",title:"Cardiovascular Physiology & Pharmacology of the Failing Heart",yield:"high",why:"Heart failure, low EF anesthesia, inotropes, periop cardiac risk reduction"}],
+  },
+  renal:{
+    mm:[
+      {ch:"Ch 21",title:"Kidney Physiology & Anesthesia",yield:"high",why:"CKD drug pharmacokinetics (cisatracurium), hyperkalemia risk, fluid management"},
+      {ch:"Ch 38",title:"Anesthesia for Patients with Renal Disease",yield:"high",why:"Drug dose adjustment in CKD/ESRD, dialysis timing, succinylcholine and K+"},
+    ],
+    barash:[{ch:"Ch 8",title:"Anesthesia for Patients with Renal Insufficiency",yield:"high",why:"CKD/ESRD anesthetic management, drug clearance, avoid nephrotoxins, renal protection"}],
+  },
+  hepatic:{
+    mm:[
+      {ch:"Ch 22",title:"Liver Physiology & Anesthesia",yield:"high",why:"Drug metabolism, coagulopathy, portal hypertension, hepatic blood flow — critical for liver disease"},
+      {ch:"Ch 39",title:"Anesthesia for Patients with Hepatic Disease",yield:"high",why:"Cirrhosis management, Child-Pugh/MELD, SBP prophylaxis, TIPS, encephalopathy risk"},
+    ],
+    barash:[{ch:"Ch 9",title:"Liver Disease",yield:"high",why:"Hepatic physiology, drug metabolism, coagulopathy, hepatorenal syndrome, ascites management"}],
+  },
+  pulmonary:{
+    mm:[{ch:"Ch 18",title:"Respiratory Physiology & Anesthesia",yield:"high",why:"COPD/asthma: bronchospasm, auto-PEEP, hypercapnia permissiveness, post-op pulmonary complications"}],
+    barash:[{ch:"Ch 6",title:"Respiratory Physiology & Pathophysiology",yield:"high",why:"Airflow obstruction physiology, gas exchange, ventilator strategy in obstructive lung disease"}],
+  },
+  endocrine:{
+    mm:[{ch:"Ch 23",title:"Endocrine Physiology & Anesthesia",yield:"high",why:"Periop glucose management, insulin protocols, thyroid storm prevention, adrenal insufficiency"}],
+    barash:[{ch:"Ch 10",title:"Endocrine Function",yield:"high",why:"Diabetic patient management, stress hyperglycemia, glucose targets, thyroid/adrenal implications"}],
+  },
+  neurologic:{
+    mm:[{ch:"Ch 20",title:"Neurophysiology & Anesthesia",yield:"high",why:"Neuromuscular disease implications, seizure disorder drug interactions, autonomic dysfunction"}],
+    barash:[{ch:"Ch 5",title:"Neuropharmacology",yield:"high",why:"Drug interactions in epilepsy, Parkinson's, myasthenia gravis, MS — anesthetic drug effects on neuro"}],
+  },
+  coagulopathy:{
+    barash:[{ch:"Ch 11",title:"Coagulation",yield:"high",why:"Coagulation cascade, anticoagulant reversal, TEG/ROTEM interpretation, massive transfusion"}],
+    mm:[{ch:"Ch 43",title:"Anesthetic Complications",yield:"med",why:"Anticoagulant interactions with neuraxial anesthesia, regional contraindications"}],
+  },
+  obesity:{
+    mm:[{ch:"Ch 25",title:"Airway Management",yield:"high",why:"Obese airway: RAMPED position, preoxygenation, apneic oxygenation, OSA implications"}],
+    barash:[{ch:"Ch 42",title:"Anesthesia and Obesity",yield:"high",why:"BMI effects on pharmacokinetics (IBW vs TBW dosing), OSA, positioning, lung-protective ventilation"}],
+  },
+};
+
+// ─── OR CHECKLISTS ──────────────────────────────────────────────────────────
+const OR_CHECKLISTS = {
+  "Laparoscopic":["Position & padding: supine, arms tucked or out","OG/NG tube for stomach decompression","ETT confirmed (LMA NOT recommended — insufflation risk)","Eyes taped — Trendelenburg position risk","ETCO2 baseline — anticipate rise with insufflation","Have vasopressors ready: phenylephrine for Trendelenburg hypotension","PONV prophylaxis: Ondansetron + Dexamethasone","Multimodal analgesia: Ketorolac + Ofirmev ± wound infiltration"],
+  "Cardiac / CABG":["Arterial line PRIOR to induction (radial preferred)","Large-bore IV x2 + central line","TEE probe available and trained operator confirmed","Cell saver / perfusionist on standby","Heparin available and ACT machine verified","High-dose opioid induction: Fentanyl 5-10 mcg/kg","Etomidate preferred — avoid propofol if low EF","Warming blanket + warm irrigation fluids"],
+  "Thoracic / VATS":["Double-lumen tube (DLT) sized for patient (typically 37-39F left)","Fiberoptic bronchoscope IMMEDIATELY available for DLT confirmation","Arterial line for one-lung ventilation monitoring","Lung isolation confirmed with FOB before draping","OLV ventilation: 4-6 mL/kg IBW, PEEP 5, permissive hypercapnia","Hypoxemia rescue: CPAP to operative lung / return to two-lung","Epidural or paravertebral block for thoracotomy pain"],
+  "Neurosurgery / Craniotomy":["Arterial line PRIOR to induction","Deep analgesia at Mayfield pin placement (Fentanyl 2mcg/kg or Ketamine 0.5mg/kg)","Avoid N2O — pneumocephalus risk","Mannitol 0.25-1 g/kg available","Propofol TIVA preferred","Keep MAP within 20% of baseline","Temperature normothermia — NO hyperthermia","Neuromonitoring (MEP/SSEP) — discuss paralytic restrictions"],
+  "Spine":["Prone positioning plan: Wilson frame/Jackson table/rolls","Eye protection CRITICAL — check every 30 min","Arterial line for long/complex cases","Neuromonitoring: SSEP/MEP — avoid Succinylcholine if requested","Tranexamic acid for complex multi-level cases","Keep normothermia: forced-air blanket, warm IV fluids","Anticipated blood loss — Type and Cross confirmed"],
+  "OB / C-Section":["Spinal: Bupivacaine 0.75% hyperbaric 1.4-1.6mL + Fentanyl 10-25mcg + Morphine 100-200mcg","GA if emergency — RSI mandatory (Propofol 2mg/kg + Succinylcholine 1.5mg/kg)","Left lateral table tilt — aortocaval decompression until delivery","Oxytocin 3U slow IV bolus then gtt after delivery","Phenylephrine gtt for spinal hypotension (prophylactic)","Neonatal team present in room","Failed spinal plan: video laryngoscope available"],
+  "Obstetric Neuraxial":["Epidural test dose: Lido 1.5% + epi 1:200k 3mL","Confirm negative aspiration and negative intravascular placement","Labor maintenance: bupivacaine 0.0625-0.125% + fentanyl 2mcg/mL","Maternal vitals q5min x 15 min after top-up","LAST rescue: Intralipid 20% available in L&D suite","Documentation: catheter depth, level of block, patient comfort"],
+  "ENT / Airway":["Shared airway — discuss with surgeon BEFORE patient arrives","Microlaryngoscopy: MLT tube (5.0-6.0) or jet ventilation setup","TIVA if laser case — avoid flammable gases","Laser case: FiO2 <30%, saline-filled cuff ETT, laser goggles","Tonsillectomy: oral RAE tube, throat pack documented","Anticipated difficult airway: video laryngoscope, bougie, trach tray open","Dexamethasone for post-op edema"],
+  "Orthopedic / Joint":["Regional anesthesia plan confirmed with surgeon","Nerve block: femoral/adductor canal (TKA), interscalene (shoulder)","Tourniquet: confirm safe pressure and time","Tourniquet pain: deepen GA or supplement neuraxial","Cement: phenylephrine ready at cementation","Antibiotic prophylaxis: Cefazolin or Vancomycin if PCN allergic","Tranexamic acid: 1g IV","Thromboprophylaxis: timing of spinal vs DVT prophylaxis"],
+  "Vascular / Aortic":["Arterial line PRIOR to induction — radial preferred","Large-bore IV x2 minimum","Cross-clamp: Nitroprusside for clamping, Vasopressin for release","Heparin 100U/kg prior to cross-clamp; confirm with ACT","Renal protection: maintain adequate perfusion pressure and UO","Mannitol 0.5g/kg prior to clamping","Cell saver active throughout","ICU post-op for all open cases"],
+  "Trauma / Emergency":["ASSUME FULL STOMACH — RSI mandatory","Two large-bore IVs minimum","Massive transfusion protocol: 1:1:1 PRBCs:FFP:Platelets — activate early","Ketamine 1-2mg/kg + Succinylcholine 1.5mg/kg IV RSI","Warmed blood products — warm all IV fluids","TXA: 1g IV within 3 hours of injury","Lethal triad prevention: normothermia, correct acidosis, coagulopathy"],
+  "Pediatric":["Weight-based dosing for ALL medications — double-check","ETT size: (age/4)+4 uncuffed; (age/4)+3.5 cuffed","Atropine available for bradycardia","Temperature critical: warming mattress, warm fluids, warm OR","Pediatric circuit, pediatric laryngoscope blades","Sevoflurane inhalation induction if no IV access","Emergence delirium: Dexmedetomidine 0.5mcg/kg or Propofol 0.5mg/kg"],
+  "Ambulatory / Day Surgery":["Short-acting agents preferred — Propofol, Roc+Sugammadex","Multimodal analgesia: Ketorolac + Ofirmev + Dexamethasone","Regional block for postoperative pain","PONV prophylaxis mandatory: Ondansetron + Dexamethasone","Confirm responsible adult escort and discharge instructions","IV fluid strategy — limit volumes for early voiding"],
+  "Open Abdominal":["Epidural placement: T8-T10 for post-op analgesia","Large-bore IV x2; A-line for lengthy cases","OG/NG tube for stomach decompression before closure","Significant third-spacing — goal-directed fluid therapy","Cell saver if malignancy contraindication not present","ERAS protocol: goal-directed fluids, multimodal analgesia"],
+  "Ophthalmologic":["Oculocardiac reflex: atropine ready","Avoid succinylcholine (raises IOP)","Smooth emergence CRITICAL — Lidocaine 1.5mg/kg IV before extubation","N2O CONTRAINDICATED if intraocular gas (SF6, C3F8) — ask surgeon","Head-up 15-20 degrees (reduce IOP)","LMA acceptable in most ophthalmic cases"],
+  "Urologic / Robotic":["Steep Trendelenburg (30-45°) — confirm patient tolerates","Padding shoulders — prevent brachial plexus injury","ETT preferred — LMA higher failure risk in steep Trendelenburg","Limit IV fluids intraoperatively (improves surgical view)","Communication with surgeon before any positioning change","PONV prophylaxis: triple therapy"],
+  "Plastics / Burns":["Temperature CRITICAL — warm OR (>80°F for major burns), warm fluids","IV access may be through burned tissue if needed","Early intubation if facial/neck burns (edema assessment)","Succinylcholine: SAFE first 48h; CONTRAINDICATED after 48h","Significant blood loss expected — Type and Cross","Ketamine 1-2mg/kg ideal for debridements"],
+  "Endoscopy / Scope":["Propofol sedation: bolus 40-80mg, titrate 10-20mg","Aspiration risk: semi-emergent/obese → consider ETT","Bite block placed before scope insertion","ERCP: often prone — limited airway access; consider ETT for lengthy cases","Reversal agents available: Flumazenil, Naloxone"],
+};
+
+const REGIONAL_BY_CASE = {
+  "Laparoscopic":[
+    {name:"TAP Block (bilateral)",desc:"Transversus abdominis plane — port site analgesia",la:"Bupivacaine 0.25% 20mL/side",timing:"After induction or at end of case"},
+    {name:"Quadratus Lumborum (QL) Block",desc:"QL type II — broader visceral pain coverage",la:"Ropivacaine 0.2% 20mL/side",timing:"After induction"},
+    {name:"Wound Infiltration",desc:"Surgeon-placed local at trocar sites",la:"Bupivacaine 0.25% up to max dose",timing:"Pre-incision or closure"},
+  ],
+  "Open Abdominal":[
+    {name:"Thoracic Epidural (TEA)",desc:"T7-T9 — gold standard for open abdominal analgesia",la:"Bupivacaine 0.0625-0.125% + Fentanyl 2mcg/mL gtt",timing:"Place pre-induction; test dose mandatory"},
+    {name:"TAP Block (bilateral)",desc:"Adjunct or if epidural contraindicated",la:"Bupivacaine 0.25% 20mL/side",timing:"After induction"},
+    {name:"Quadratus Lumborum (QL) Block",desc:"Posterior QL for broader coverage",la:"Ropivacaine 0.25% 20mL/side",timing:"After induction"},
+  ],
+  "Orthopedic / Joint":[
+    {name:"Adductor Canal Block (ACB)",desc:"TKA — preserves quad strength; sensory only",la:"Ropivacaine 0.2% 20mL",timing:"Pre-op or post-induction"},
+    {name:"IPACK Block",desc:"Posterior knee pain — interspace popliteal artery/capsule",la:"Ropivacaine 0.2% 10mL",timing:"After induction"},
+    {name:"Popliteal Sciatic Block",desc:"Foot/ankle surgery",la:"Ropivacaine 0.5% 20mL",timing:"Pre-op; onset 20-30 min"},
+    {name:"Interscalene Block",desc:"Shoulder surgery — C5-C6; ipsilateral phrenic palsy expected",la:"Ropivacaine 0.5% 15-20mL",timing:"Pre-op"},
+    {name:"Spinal Anesthesia",desc:"TKA/THA — superior to GA in many studies",la:"Bupivacaine 0.75% hyperbaric 1.6-2mL ± Fentanyl 25mcg",timing:"Block area"},
+  ],
+  "Thoracic / VATS":[
+    {name:"Thoracic Epidural (TEA)",desc:"Gold standard post-thoracotomy; T4-T6",la:"Bupivacaine 0.0625% + Fentanyl 2mcg/mL gtt",timing:"Pre-induction; test dose before incision"},
+    {name:"Paravertebral Block (PVB)",desc:"Excellent alternative; unilateral; fewer side effects",la:"Ropivacaine 0.5% 4mL/level T3-T7",timing:"After induction or pre-op"},
+    {name:"Erector Spinae Plane (ESP)",desc:"Easier landmark; good VATS coverage T4-T6",la:"Ropivacaine 0.25% 20mL",timing:"After induction"},
+  ],
+  "Neurosurgery / Craniotomy":[
+    {name:"Scalp Block",desc:"Reduces pin-site hemodynamic response; covers 6 nerves",la:"Bupivacaine 0.25% + Epi 1:200k — 3-5mL/nerve",timing:"After induction, before Mayfield pins"},
+  ],
+  "Spine":[
+    {name:"Erector Spinae Plane (ESP)",desc:"Multilevel coverage; minimal hemodynamic effect",la:"Ropivacaine 0.25% 20mL bilateral",timing:"After induction, before prone positioning"},
+  ],
+  "OB / C-Section":[
+    {name:"Intrathecal Morphine",desc:"Standard of care for C-section post-op analgesia",la:"Morphine 100-150mcg preservative-free (with spinal)",timing:"Added to spinal at placement"},
+    {name:"TAP Block (bilateral)",desc:"If intrathecal morphine not given or inadequate",la:"Bupivacaine 0.25% 20mL/side",timing:"After delivery, before closure"},
+  ],
+  "Obstetric Neuraxial":[
+    {name:"Labor Epidural",desc:"Standard; continuous infusion with PCEA",la:"Bupivacaine 0.0625-0.125% + Fentanyl 2mcg/mL",timing:"On patient request"},
+    {name:"Combined Spinal-Epidural (CSE)",desc:"Faster onset; intrathecal component gives immediate relief",la:"Bupivacaine 2.5mg + Fentanyl 15mcg intrathecal",timing:"On request"},
+  ],
+  "ENT / Airway":[
+    {name:"Airway Topicalization",desc:"Standard for awake fiberoptic",la:"Lidocaine 4% nebulized 4mL + spray-as-you-go to cords",timing:"20-30 min pre-induction"},
+  ],
+  "Cardiac / CABG":[
+    {name:"Bilateral Erector Spinae Plane (ESP)",desc:"Sternotomy analgesia; avoids anticoagulation concerns of neuraxial",la:"Ropivacaine 0.25% 20mL bilateral at T4",timing:"After induction before heparinization"},
+  ],
+  "Vascular / Aortic":[
+    {name:"Thoracic Epidural (TEA)",desc:"Open aortic — reduces stress response, improves bowel recovery",la:"Bupivacaine 0.0625% + Fentanyl 2mcg/mL",timing:"Pre-induction; hold until heparin timing allows"},
+  ],
+  "Urologic / Robotic":[
+    {name:"TAP Block (bilateral)",desc:"Port-site and lower abdominal coverage for robotic cases",la:"Bupivacaine 0.25% 20mL/side",timing:"After induction"},
+    {name:"Spinal Anesthesia",desc:"TURP/cystoscopy — excellent for pelvic procedures",la:"Bupivacaine 0.75% hyperbaric 1.2-1.6mL",timing:"Block area"},
+  ],
+  "Pediatric":[
+    {name:"Caudal Block",desc:"Standard peds block — perineal/inguinal/lower extremity; <25kg",la:"Bupivacaine 0.125-0.25% 1mL/kg (max 20mL)",timing:"After induction, before incision"},
+    {name:"Ilioinguinal/Iliohypogastric Block",desc:"Inguinal hernia repair, orchiopexy",la:"Bupivacaine 0.25% 0.1mL/kg/side",timing:"After induction"},
+  ],
+  "Plastics / Burns":[
+    {name:"Brachial Plexus Block (Supraclavicular)",desc:"Upper extremity reconstruction",la:"Ropivacaine 0.5% 20mL",timing:"Pre-op"},
+  ],
+  "Ambulatory / Day Surgery":[
+    {name:"TAP Block",desc:"Outpatient abdominal procedures",la:"Bupivacaine 0.25% 20mL/side",timing:"After induction"},
+    {name:"Peripheral Nerve Block",desc:"Case-specific; extends analgesia beyond PACU",la:"Ropivacaine 0.5% or liposomal bupivacaine",timing:"Pre-op preferred"},
+  ],
+};
+
+const OPIOID_SPARING_AGENTS = [
+  "Ketorolac 15-30mg IV","Ofirmev (Acetaminophen) 1g IV","Ketamine 0.1-0.5mg/kg subanesthetic",
+  "Lidocaine infusion 1-1.5mg/kg/hr","Dexmedetomidine 0.2-0.7mcg/kg/hr","Magnesium 40-60mg/kg load",
+  "Dexamethasone 4-8mg IV","Gabapentin 300-600mg PO pre-op","Celecoxib 400mg PO pre-op",
+];
+
+// ─── SHARED COMPONENTS ──────────────────────────────────────────────────────
+function Pills({opts=[],sel=[],onChange,multi=true}){
+  const safeSel=Array.isArray(sel)?sel:[];
+  const safeOpts=Array.isArray(opts)?opts:[];
+  const tog=(o)=>multi?onChange(safeSel.includes(o)?safeSel.filter(x=>x!==o):[...safeSel,o]):onChange(safeSel.includes(o)?[]:[o]);
+  return <div className="pill-wrap">{safeOpts.map(o=><span key={o} className={`pill${safeSel.includes(o)?" on":""}`} onClick={()=>tog(o)}>{o}</span>)}</div>;
+}
+
+// ─── DRUG DOSE CALCULATOR ────────────────────────────────────────────────────
+function DrugCalc({pt}){
+  const wt=parseFloat(pt.weight)||0;
+  const [selCat,setSelCat]=useState("induction");
+  const [ibw,setIbw]=useState(false);
+  const heightCm=parseFloat(pt.height)||0;
+  const sex=(pt.ageSex||"").toLowerCase().includes("f")?"f":"m";
+  const ibwVal=sex==="m"?50+2.3*((heightCm/2.54)-60):45.5+2.3*((heightCm/2.54)-60);
+  const effectiveWt=ibw&&ibwVal>0?Math.max(ibwVal,0):wt;
+  const fmt=(n)=>n<1?n.toFixed(2):n<10?n.toFixed(1):Math.round(n);
+  const cats=Object.keys(DRUG_DB);
+  const catColors={induction:"var(--cyan)",paralytic:"var(--amber)",reversal:"var(--green)",opioid:"var(--purple)",vasoactive:"var(--red)",antiemetic:"var(--green)",local:"var(--amber)",maintenance:"var(--cyan)",emergency:"var(--red)"};
+  return(
+    <div className="page">
+      <div className="page-title">Drug Dose Calculator</div>
+      <div className="page-sub">// weight-based dosing · all doses calculated to patient weight</div>
+      {wt===0&&<div className="card" style={{marginBottom:16,borderColor:"rgba(245,166,35,0.3)",background:"var(--amber2)"}}>
+        <span style={{color:"var(--amber)",fontSize:13}}>⚠ Enter patient weight in Pre-Op Planner tab to enable auto-calculation.</span>
+      </div>}
+      <div style={{display:"flex",alignItems:"center",gap:16,marginBottom:20,flexWrap:"wrap"}}>
+        <div style={{display:"flex",gap:16,alignItems:"center",background:"var(--bg1)",border:"1px solid var(--border)",borderRadius:"var(--r)",padding:"10px 16px",flexWrap:"wrap"}}>
+          <span style={{fontFamily:"var(--font-mono)",fontSize:12,color:"var(--text2)"}}>Patient:</span>
+          <span style={{fontFamily:"var(--font-mono)",fontSize:13,color:"var(--text)"}}>{pt.name||"—"}</span>
+          <span style={{fontFamily:"var(--font-mono)",fontSize:13,color:"var(--cyan)"}}>{wt?`${wt} kg`:"? kg"}</span>
+          {ibwVal>0&&<span style={{fontFamily:"var(--font-mono)",fontSize:12,color:"var(--text3)"}}>IBW: {ibwVal.toFixed(1)} kg</span>}
+        </div>
+        {ibwVal>0&&<div className="toggle-row" style={{gap:8}}><span className="toggle-lbl">Use IBW</span><div className={`tog${ibw?" on":""}`} onClick={()=>setIbw(!ibw)}/></div>}
+      </div>
+      <div style={{display:"flex",gap:6,flexWrap:"wrap",marginBottom:20}}>
+        {cats.map(c=><button key={c} className={`btn${selCat===c?" btn-primary":" btn-ghost"}`}
+          style={{fontSize:11,padding:"6px 14px",fontFamily:"var(--font-mono)",
+            ...(selCat===c?{}:{color:catColors[c]||"var(--text2)"})}}
+          onClick={()=>setSelCat(c)}>{c.toUpperCase()}</button>)}
+      </div>
+      <div className="card" style={{padding:0,overflow:"hidden",overflowX:"auto"}}>
+        <table className="drug-table" style={{width:"100%",minWidth:520}}>
+          <thead><tr><th>Drug</th><th>Dose Range</th>{wt>0&&<th>Calculated ({ibw?"IBW":"actual"} {effectiveWt}kg)</th>}<th>Route</th><th>Notes</th></tr></thead>
+          <tbody>
+            {(DRUG_DB[selCat]||[]).map(d=>{
+              const lo=d.dose_lo*effectiveWt,hi=d.dose_hi*effectiveWt;
+              const isFixed=d.dose_lo===0&&d.dose_hi===0;
+              const calcStr=isFixed?"See note":d.dose_lo===d.dose_hi?`${fmt(lo)} ${d.unit.split("/")[0]}`:`${fmt(lo)} – ${fmt(hi)} ${d.unit.split("/")[0]}`;
+              return(<tr key={d.name}>
+                <td className="drug-name">{d.name}</td>
+                <td className="drug-range">{isFixed?"Fixed":`${d.dose_lo}–${d.dose_hi} ${d.unit}`}</td>
+                {wt>0&&<td className="drug-dose">{wt>0?calcStr:"—"}</td>}
+                <td><span className="pill" style={{fontSize:10}}>{d.route}</span></td>
+                <td style={{fontSize:11,color:"var(--text3)",maxWidth:260}}>{d.note}</td>
+              </tr>);
+            })}
+          </tbody>
+        </table>
+      </div>
+      <div style={{marginTop:12,fontFamily:"var(--font-mono)",fontSize:10,color:"var(--text3)"}}>⚠ Clinical decision support only. Verify all dosing with current references and attending guidance.</div>
+    </div>
+  );
+}
+
+// ─── RISK STRATIFIER ────────────────────────────────────────────────────────
+function RiskStratifier({pt,setPt}){
+  const [output,setOutput]=useState("");
+  const [loading,setLoading]=useState(false);
+  const [streaming,setStreaming]=useState(false);
+
+  const apfelScore=(()=>{
+    let s=0;
+    if((pt.ageSex||"").toLowerCase().includes("f"))s++;
+    if(!pt.smoker)s++;
+    const pmhx=(pt.pmhx||"").toLowerCase();
+    if(pmhx.includes("ponv")||pmhx.includes("motion sickness"))s++;
+    if((pt.adjuncts||[]).some(a=>a.toLowerCase().includes("opioid")))s++;
+    return s;
+  })();
+
+  const rcri=(()=>{
+    let s=0;
+    const pmhx=(pt.pmhx||"").toLowerCase();
+    const proc=(pt.procedure||"").toLowerCase();
+    if(/abdominal|thoracic|vascular|aortic|suprainguinal/i.test(proc))s++;
+    const hs=["ischemic heart","coronary","cad","mi ","heart failure","chf","cerebrovascular","stroke","tia","diabetes","insulin","creatinine","renal failure","ckd"];
+    hs.forEach(h=>{if(pmhx.includes(h))s++;});
+    return Math.min(s,6);
+  })();
+
+  const stopbang=(()=>{
+    const pmhx=(pt.pmhx||"").toLowerCase();
+    let s=0;
+    if(pmhx.includes("snor"))s++;
+    if(pmhx.includes("tired")||pmhx.includes("fatigue"))s++;
+    if(pmhx.includes("apnea")||pmhx.includes("osa")||pmhx.includes("cpap"))s+=2;
+    if(parseFloat(pt.weight)>100)s++;
+    const age=parseInt((pt.ageSex||"0").replace(/[^0-9]/g,""));
+    if(age>50)s++;
+    return Math.min(s,8);
+  })();
+
+  const rcriRisk=rcri<=0?"<1%":rcri===1?"1%":rcri===2?"7%":"≥11%";
+  const rcriLabel=rcri<=0?"Low":rcri<=1?"Low":rcri===2?"Moderate":"High";
+  const apfelLabel=apfelScore<=1?"Low (10-20%)":apfelScore===2?"Moderate (40%)":apfelScore===3?"High (60%)":"Very High (80%)";
+  const osaRisk=stopbang>=5?"High":stopbang>=3?"Intermediate":"Low";
+  const meterColor=(v,max)=>v/max<0.33?"var(--green)":v/max<0.66?"var(--amber)":"var(--red)";
+
+  const generate=async()=>{
+    setLoading(true);setOutput("");setStreaming(true);
+    const prompt=`You are a senior anesthesiologist doing a rapid pre-operative risk stratification for a CA1 resident. Be direct, terse, and clinically precise.
+PATIENT: ${pt.name||"Unknown"} | ${pt.ageSex||"?"} | ${pt.weight||"?"}kg
+PROCEDURE: ${pt.procedure||"?"} | ${pt.caseType||"General"}
+PMHx: ${pt.pmhx||"None"} | Meds: ${pt.medications||"None"}
+Allergies: ${pt.nkda?"NKDA":pt.allergies||"Unknown"} | Smoker: ${pt.smoker?"Yes":"No"}
+RCRI: ${rcri} (${rcriRisk}) | Apfel: ${apfelScore}/4 (${apfelLabel}) | OSA: ${osaRisk}
+
+Generate a RAPID RISK BRIEF:
+1. TOP 3-5 INTRAOPERATIVE COMPLICATIONS (specific to this patient, ranked by likelihood)
+2. AIRWAY CONCERNS (specific findings, backup plan)
+3. HEMODYNAMIC CONCERNS (anticipated instability, vasopressor readiness)
+4. METABOLIC / COAGULATION concerns
+5. EMERGENCE & POSTOP CONCERNS
+6. ONE-LINE ATTENDING BRIEF
+
+Be specific — reference actual PMHx and procedure. Flag HIGH RISK items.`;
+    try{
+      const r=await fetch("https://api.anthropic.com/v1/messages",{method:"POST",
+        headers:{"Content-Type":"application/json","x-api-key":getApiKey(),"anthropic-version":"2023-06-01","anthropic-dangerous-direct-browser-access":"true"},
+        body:JSON.stringify({model:"claude-sonnet-4-6",max_tokens:1000,stream:true,messages:[{role:"user",content:prompt}]})});
+      const reader=r.body.getReader();const dec=new TextDecoder();let buf="";
+      while(true){const{done,value}=await reader.read();if(done)break;
+        buf+=dec.decode(value,{stream:true});
+        const lines=buf.split("\n");buf=lines.pop();
+        for(const l of lines){if(!l.startsWith("data: "))continue;const d=l.slice(6);if(d==="[DONE]")continue;
+          try{const j=JSON.parse(d);if(j.delta?.text)setOutput(p=>p+j.delta.text);}catch{}}}
+    }catch(e){setOutput("Error: "+e.message);}
+    setLoading(false);setStreaming(false);
+  };
+
+  return(
+    <div className="page">
+      <div className="page-title">Risk Stratifier</div>
+      <div className="page-sub">// pre-op risk scoring · AI complication prediction</div>
+      <div className="g3 gap">
+        <div className="card">
+          <div className="section-head">RCRI Cardiac Risk</div>
+          <div style={{display:"flex",alignItems:"baseline",gap:8,marginBottom:8}}>
+            <span style={{fontFamily:"var(--font-head)",fontSize:32,fontWeight:800,color:rcri>=3?"var(--red)":rcri>=2?"var(--amber)":"var(--green)"}}>{rcri}</span>
+            <span style={{fontFamily:"var(--font-mono)",fontSize:11,color:"var(--text3)"}}>/ 6</span>
+            <span className={`badge badge-${rcri<=1?"low":rcri===2?"mod":"high"}`}>{rcriLabel}</span>
+          </div>
+          <div className="risk-bar-wrap"><div className="risk-bar" style={{width:`${(rcri/6)*100}%`,background:meterColor(rcri,6)}}/></div>
+          <div style={{fontFamily:"var(--font-mono)",fontSize:11,color:"var(--text3)",marginTop:6}}>Major cardiac event risk: {rcriRisk}</div>
+        </div>
+        <div className="card">
+          <div className="section-head">Apfel PONV Score</div>
+          <div style={{display:"flex",alignItems:"baseline",gap:8,marginBottom:8}}>
+            <span style={{fontFamily:"var(--font-head)",fontSize:32,fontWeight:800,color:apfelScore>=3?"var(--red)":apfelScore>=2?"var(--amber)":"var(--green)"}}>{apfelScore}</span>
+            <span style={{fontFamily:"var(--font-mono)",fontSize:11,color:"var(--text3)"}}>/ 4</span>
+          </div>
+          <div className="risk-bar-wrap"><div className="risk-bar" style={{width:`${(apfelScore/4)*100}%`,background:meterColor(apfelScore,4)}}/></div>
+          <div style={{fontFamily:"var(--font-mono)",fontSize:11,color:"var(--text3)",marginTop:6}}>{apfelLabel}</div>
+        </div>
+        <div className="card">
+          <div className="section-head">OSA Risk (STOP-BANG)</div>
+          <div style={{display:"flex",alignItems:"baseline",gap:8,marginBottom:8}}>
+            <span style={{fontFamily:"var(--font-head)",fontSize:32,fontWeight:800,color:stopbang>=5?"var(--red)":stopbang>=3?"var(--amber)":"var(--green)"}}>{stopbang}</span>
+            <span style={{fontFamily:"var(--font-mono)",fontSize:11,color:"var(--text3)"}}>/ 8</span>
+            <span className={`badge badge-${osaRisk==="Low"?"low":osaRisk==="Intermediate"?"mod":"high"}`}>{osaRisk}</span>
+          </div>
+          <div className="risk-bar-wrap"><div className="risk-bar" style={{width:`${(stopbang/8)*100}%`,background:meterColor(stopbang,8)}}/></div>
+          <div style={{fontFamily:"var(--font-mono)",fontSize:11,color:"var(--text3)",marginTop:6}}>Score estimated from PMHx inputs</div>
+        </div>
+      </div>
+      <div className="card gap">
+        <div className="section-head">Quick Flags</div>
+        <div style={{display:"flex",flexWrap:"wrap",gap:6}}>
+          {(pt.asa==="IV"||pt.asa==="V")&&<span className="pill red">ASA {pt.asa} — High Acuity</span>}
+          {(pt.mallampati==="III"||pt.mallampati==="IV")&&<span className="pill red">Mallampati {pt.mallampati} — Difficult Airway</span>}
+          {pt.mets==="<4"&&<span className="pill amber">Low Functional Capacity (&lt;4 METs)</span>}
+          {pt.smoker&&<span className="pill amber">Active Smoker — Resp Risk ↑</span>}
+          {!pt.nkda&&pt.allergies&&<span className="pill red">⚠ Allergies: {pt.allergies}</span>}
+          {(pt.pmhx||"").toLowerCase().includes("osa")&&<span className="pill amber">OSA — Airway + Emergence Risk</span>}
+          {(pt.pmhx||"").toLowerCase().includes("anticoag")&&<span className="pill red">Anticoagulation — Bleeding Risk</span>}
+          {(pt.caseType||"").includes("Cardiac")&&<span className="pill red">High-Risk Surgery</span>}
+          {apfelScore>=3&&<span className="pill amber">High PONV Risk — Triple Prophylaxis</span>}
+          {!pt.name&&!pt.pmhx&&<span className="pill" style={{color:"var(--text3)"}}>Enter patient data in Pre-Op Planner to auto-populate</span>}
+        </div>
+      </div>
+      <div className="card">
+        <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:14,flexWrap:"wrap",gap:10}}>
+          <div className="section-head" style={{marginBottom:0}}>AI Complication Prediction</div>
+          <button className="btn btn-primary" onClick={generate} disabled={loading} style={{fontSize:12,padding:"8px 16px"}}>
+            {loading?<><span className="dot-stream">Analyzing</span></>:"⚡ Generate Risk Brief"}
+          </button>
+        </div>
+        {!output&&!loading&&<div style={{textAlign:"center",padding:"32px 0",color:"var(--text3)",fontFamily:"var(--font-mono)",fontSize:12}}>Click to generate AI-powered complication prediction</div>}
+        {(output||loading)&&<div className="plan-out" style={{fontSize:12.5}}>{output.replace(/\*\*(.*?)\*\*/g,"$1").replace(/#{1,3}\s/g,"")}{streaming&&<span className="blink-cur"/>}</div>}
+      </div>
+    </div>
+  );
+}
+
+// ─── OR SETUP ───────────────────────────────────────────────────────────────
+function ORSetup({pt,setPt}){
+  const [checked,setChecked]=useState({});
+  const [aiItems,setAiItems]=useState([]);
+  const [aiLoading,setAiLoading]=useState(false);
+  const caseType=pt.caseType||"";
+  const baseItems=(OR_CHECKLISTS[caseType]||[]).map((t,i)=>({id:"base-"+i,text:t}));
+  const allItems=[...baseItems,...aiItems.map((t,i)=>({id:"ai-"+i,text:t,ai:true}))];
+  const done=allItems.filter(x=>checked[x.id]).length;
+  const tog=(id)=>setChecked(p=>({...p,[id]:!p[id]}));
+
+  const generateAI=async()=>{
+    setAiLoading(true);setAiItems([]);
+    const prompt=`Generate 5-7 PATIENT-SPECIFIC OR setup items beyond the standard template. This patient: ${pt.name||"?"} | ${pt.ageSex||"?"} | ${pt.weight||"?"}kg | ${pt.procedure||"?"} (${caseType}) | PMHx: ${pt.pmhx||"None"} | Meds: ${pt.medications||"None"} | Allergies: ${pt.nkda?"NKDA":pt.allergies}. Return ONLY a JSON array of strings.`;
+    try{
+      const r=await fetch("https://api.anthropic.com/v1/messages",{method:"POST",
+        headers:{"Content-Type":"application/json","x-api-key":getApiKey(),"anthropic-version":"2023-06-01","anthropic-dangerous-direct-browser-access":"true"},
+        body:JSON.stringify({model:"claude-sonnet-4-6",max_tokens:600,messages:[{role:"user",content:prompt}]})});
+      const data=await r.json();
+      const text=(data.content||[]).map(c=>c.text||"").join("");
+      const clean=text.replace(/```json|```/g,"").trim();
+      const arr=JSON.parse(clean);
+      if(Array.isArray(arr))setAiItems(arr);
+    }catch(e){setAiItems(["Error: "+e.message]);}
+    setAiLoading(false);
+  };
+
+  const progress=allItems.length>0?(done/allItems.length)*100:0;
+
+  return(
+    <div className="page">
+      <div className="page-title">OR Setup Checklist</div>
+      <div className="page-sub">// case-type template + AI patient-specific items</div>
+      <div className="card gap">
+        <div className="section-head">Case Type</div>
+        <div className="pill-wrap">
+          {CASE_TYPES.map(c=><span key={c} className={`pill${pt.caseType===c?" on":""}`}
+            onClick={()=>setPt&&setPt(p=>({...p,caseType:c}))}>{c}</span>)}
+        </div>
+      </div>
+      {caseType&&(
+        <>
+          <div className="card gap" style={{padding:"14px 20px"}}>
+            <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:8,flexWrap:"wrap",gap:8}}>
+              <div style={{fontFamily:"var(--font-mono)",fontSize:12,color:"var(--text2)"}}>
+                {done} / {allItems.length} complete
+                {done===allItems.length&&allItems.length>0&&<span style={{color:"var(--green)",marginLeft:10}}>✓ READY</span>}
+              </div>
+              <div style={{display:"flex",gap:8}}>
+                <button className="btn btn-ghost" onClick={generateAI} disabled={aiLoading} style={{fontSize:11,padding:"6px 12px"}}>
+                  {aiLoading?<span className="dot-stream">Generating</span>:"✦ Patient-Specific Items"}
+                </button>
+                <button className="btn btn-ghost" onClick={()=>setChecked({})} style={{fontSize:11,padding:"6px 12px"}}>Reset</button>
+              </div>
+            </div>
+            <div className="risk-bar-wrap" style={{height:8}}>
+              <div className="risk-bar" style={{width:`${progress}%`,background:progress===100?"var(--green)":"var(--cyan)"}}/>
+            </div>
+          </div>
+          <div className="or-grid" style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:16}}>
+            <div>
+              <div className="section-head" style={{marginBottom:12}}>Template: {caseType}</div>
+              {baseItems.map(item=>(
+                <div key={item.id} className={`check-item${checked[item.id]?" done":""}`} onClick={()=>tog(item.id)}>
+                  <div className="check-box">{checked[item.id]&&"✓"}</div>
+                  <div className="check-txt">{item.text}</div>
+                </div>
+              ))}
+            </div>
+            <div>
+              <div className="section-head" style={{marginBottom:12}}>Patient-Specific</div>
+              {aiItems.length===0&&!aiLoading&&(
+                <div style={{padding:"24px 0",textAlign:"center",color:"var(--text3)",fontFamily:"var(--font-mono)",fontSize:11}}>Click "Patient-Specific Items" to generate AI checklist</div>
+              )}
+              {aiItems.map((item,i)=>{
+                const id="ai-"+i;
+                return(
+                  <div key={id} className={`check-item${checked[id]?" done":""}`} onClick={()=>tog(id)}>
+                    <div className="check-box">{checked[id]&&"✓"}</div>
+                    <div><div className="check-txt">{item}</div><div className="check-priority" style={{color:"var(--cyan)"}}>✦ patient-specific</div></div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+          {/* Regional blocks */}
+          {(REGIONAL_BY_CASE[caseType]||[]).length>0&&(
+            <div className="card" style={{marginTop:16}}>
+              <div className="section-head">Regional Anesthesia Options for {caseType}</div>
+              {(REGIONAL_BY_CASE[caseType]||[]).map((b,i)=>(
+                <div key={i} style={{padding:"10px 0",borderBottom:i<(REGIONAL_BY_CASE[caseType]||[]).length-1?"1px solid var(--border)":"none"}}>
+                  <div style={{fontWeight:600,fontSize:13,color:"var(--text)",marginBottom:3}}>{b.name}</div>
+                  <div style={{fontSize:12,color:"var(--text2)",marginBottom:3}}>{b.desc}</div>
+                  <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
+                    <span style={{fontFamily:"var(--font-mono)",fontSize:11,color:"var(--cyan)"}}>{b.la}</span>
+                    <span style={{fontFamily:"var(--font-mono)",fontSize:11,color:"var(--text3)"}}>Timing: {b.timing}</span>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </>
+      )}
+    </div>
+  );
+}
+
+// ─── PHASES DATA ────────────────────────────────────────────────────────────
+const drug=(id,label,brand,moa)=>({id,label,brand,moa});
+const PHASES={
+  premed:{common:[drug("midazolam","Midazolam","Versed","Benzo · anxiolysis/amnesia"),drug("none_premed","None","—","No premedication")],advanced:[drug("ketamine_pre","Ketamine","Ketalar","NMDA antagonist"),drug("dexmed_pre","Dexmedetomidine","Precedex","α2 agonist"),drug("lorazepam","Lorazepam","Ativan","Benzo · longer-acting")]},
+  labs:{common:[drug("cbc","CBC","—","Complete blood count"),drug("bmp","BMP","—","Basic metabolic panel"),drug("inr","INR/PT","—","Coagulation"),drug("tnc","T&C","—","Type & crossmatch")],advanced:[drug("glu","Glucose","—","POC glucose"),drug("ts","T&S","—","Type & screen"),drug("lfts","LFTs","—","Hepatic function"),drug("coags","PTT/Coags","—","Full coagulation panel")]},
+  access:{common:[drug("piv","Peripheral IV","—","Standard venous access"),drug("aline","Arterial line","—","Invasive BP + ABG"),drug("cvl","Central venous line","—","CVP / vasoactive infusions")],advanced:[drug("cordis","Introducer/Cordis","—","Large-bore rapid transfusion"),drug("ej","External jugular IV","—","Rescue peripheral access")]},
+  abx:{common:[drug("cefazolin","Cefazolin","Ancef","1st-gen cephalosporin"),drug("vancomycin","Vancomycin","Vancocin","Glycopeptide · MRSA / PCN allergy"),drug("none_abx","None","—","No prophylaxis indicated")],advanced:[drug("clindamycin","Clindamycin","Cleocin","Lincosamide"),drug("gentamicin","Gentamicin","Garamycin","Aminoglycoside"),drug("metronidazole","Metronidazole","Flagyl","Anaerobic / colorectal")]},
+  anesthType:{common:[drug("general","General","GA","Inhaled ± IV · full unconsciousness"),drug("mac","MAC","Monitored Anesthesia Care","Sedation + local"),drug("neuraxial","Neuraxial","Epidural","Epidural catheter"),drug("spinal","Spinal","SAB","Single-shot intrathecal")],advanced:[drug("combined","Combined GA + Regional","GETA + block","GA with nerve block"),drug("tiva","Total IV (TIVA)","TIVA","Propofol ± remi infusion")],single:true},
+  airway:{common:[drug("ett","Endotracheal tube","ETT","Cuffed tube · full airway control"),drug("lma","Supraglottic airway","LMA / SGA","Sits above cords"),drug("mask","Mask ventilation","Face mask","Spontaneous or assisted")],advanced:[drug("rae","RAE tube","Oral RAE","Pre-formed · head/neck surgery"),drug("dlt","Double-lumen tube","DLT","Lung isolation"),drug("ebb","Endobronchial blocker","EBB / Arndt","Single-lumen + blocker"),drug("trach","Surgical airway","Tracheostomy","Existing or surgical airway")],single:true},
+  device:{common:[drug("direct_laryngo","Direct laryngoscope","Mac / Miller","Standard DL"),drug("video_laryngo","Video laryngoscope","GlideScope / C-MAC","Difficult airway"),drug("bougie","Bougie-assisted","Eschmann introducer","Tactile tracheal placement aid")],advanced:[drug("fiberoptic","Flexible fiberoptic","FOB","Awake or asleep intubation"),drug("optical_stylet","Optical stylet","Shikani / Levitan","Video-guided intubation")],single:true},
+  induction:{common:[drug("propofol","Propofol","Diprivan","GABA-A agonist · rapid onset/offset"),drug("fentanyl","Fentanyl","Sublimaze","μ-receptor · analgesia/intubation blunting"),drug("ketamine_ind","Ketamine","Ketalar","NMDA antagonist · hemodynamic preservation"),drug("etomidate","Etomidate","Amidate","GABA-A · hemodynamic stability")],advanced:[drug("lidocaine_iv","Lidocaine IV","Xylocaine","Na-channel · blunts laryngoscopy"),drug("midazolam_ind","Midazolam","Versed","Co-induction/amnesia"),drug("dexmed_ind","Dexmedetomidine","Precedex","α2 agonist · awake fiberoptic")]},
+  paralytic:{common:[drug("succinylcholine","Succinylcholine","Anectine","Depolarizing · RSI · short duration"),drug("rocuronium","Rocuronium","Zemuron","Non-depolarizing · Sugammadex reversible"),drug("none_paralytic","None","—","No neuromuscular blockade")],advanced:[drug("vecuronium","Vecuronium","Norcuron","Non-depolarizing · intermediate duration"),drug("cisatracurium","Cisatracurium","Nimbex","Hofmann elimination · renal/hepatic safe")]},
+  maintenance:{common:[drug("sevo","Sevoflurane","Ultane","Primary volatile maintenance agent"),drug("des","Desflurane","Suprane","Rapid emergence · airway irritant"),drug("propofol_tiva","Propofol TIVA","Diprivan infusion","No volatile · reduced PONV"),drug("combined_maint","Combined volatile + IV","Balanced","Volatile + opioid ± propofol")],advanced:[drug("remi_infusion","Remifentanil infusion","Ultiva","Ultra-short · context-insensitive"),drug("dexmed_infusion","Dexmedetomidine infusion","Precedex","α2 · sedation/analgesia"),drug("ketamine_infusion","Ketamine infusion","Ketalar","NMDA · opioid-sparing")]},
+  adjuncts:{common:[drug("fentanyl_adj","Fentanyl","Sublimaze","μ-opioid · intraop analgesia"),drug("ketorolac","Ketorolac","Toradol","NSAID · opioid-sparing"),drug("acetaminophen_iv","Acetaminophen IV","Ofirmev","Non-opioid · opioid-sparing"),drug("ketamine_adj","Ketamine (subanesthetic)","Ketalar","NMDA · 0.1-0.5mg/kg · anti-hyperalgesia")],advanced:[drug("hydromorphone","Hydromorphone","Dilaudid","μ-opioid · PACU pain"),drug("lidocaine_infusion","Lidocaine infusion","Xylocaine","1-1.5mg/kg/hr · systemic opioid-sparing"),drug("magnesium","Magnesium sulfate","MgSO4","NMDA antagonist · opioid-sparing"),drug("dexmed_adj","Dexmedetomidine","Precedex","α2 · opioid-sparing · emergence delirium"),drug("gabapentin","Gabapentinoid","Gabapentin/Lyrica","Ca2+ channel · preop oral")]},
+  monitors:{common:[drug("standard","Standard monitors","ECG/SpO2/NIBP/EtCO2","ASA basic standard monitoring"),drug("aline_mon","Invasive arterial line","A-line","Beat-to-beat BP + ABG sampling"),drug("eeg_mon","Processed EEG","BIS / SedLine","Depth of anesthesia · BIS 40-60")],advanced:[drug("tee","TEE","Transesophageal echo","Real-time cardiac · cardiac/major vascular"),drug("neuromonitoring","IONM","SSEP / MEP","Spinal/neuro · cord ischemia detection"),drug("nmt","NMT monitor","TOF / acceleromyography","Quantitative NMB monitoring")]},
+  reversal:{common:[drug("sugammadex","Sugammadex","Bridion","Encapsulates roc/vec · 2-16 mg/kg"),drug("neostigmine","Neostigmine + Glycopyrrolate","Bloxiverz + Robinul","AChE inhibitor · moderate block only"),drug("none_reversal","None / spontaneous","—","Await recovery · TOF ≥0.9")],advanced:[],single:true},
+  antiemetic:{common:[drug("ondansetron","Ondansetron","Zofran","5-HT3 antagonist · first-line PONV"),drug("dexamethasone_ae","Dexamethasone","Decadron","Corticosteroid · give at induction"),drug("scopolamine","Scopolamine patch","Transderm Scop","Muscarinic antagonist · apply night before")],advanced:[drug("metoclopramide","Metoclopramide","Reglan","D2 antagonist · prokinetic"),drug("aprepitant","Aprepitant","Emend","NK1 antagonist · oral premedication"),drug("droperidol","Droperidol","Inapsine","D2 · potent · QTc risk · 0.625mg only")]},
+  disposition:{common:[drug("outpatient","Outpatient / Same-day","OPA / SDA","Home same day"),drug("floor","Floor / Step-down","Inpatient floor","Overnight admission"),drug("icu","ICU","Intensive care unit","Continuous monitoring")],advanced:[drug("pacu_obs","Extended PACU","PACU hold","Same-day observation")],single:true},
+  pacuOrders:{common:[drug("glucose_pacu","Glucose check","POC glucose","Diabetics, prolonged NPO"),drug("hgb_pacu","Hemoglobin check","CBC / H&H","Significant blood loss")],advanced:[drug("abg_pacu","ABG","Arterial blood gas","Ventilatory/acid-base status"),drug("ecg_pacu","12-lead ECG","EKG","Cardiac cases / new arrhythmia"),drug("cxr_pacu","Chest X-ray","CXR","Central line / pneumothorax")]},
+};
+
+const CASE_DEFAULTS = {
+  "Laparoscopic":{anesthType:["general"],airway:["ett"],device:["direct_laryngo"],induction:["propofol","fentanyl"],paralytic:["succinylcholine"],maintenance:["sevo"],reversal:["sugammadex"],antiemetic:["ondansetron","dexamethasone_ae"],adjuncts:["ketorolac","acetaminophen_iv"],access:["piv"],disposition:["outpatient"]},
+  "Open Abdominal":{anesthType:["general"],airway:["ett"],device:["direct_laryngo"],induction:["propofol","fentanyl"],paralytic:["rocuronium"],maintenance:["sevo"],reversal:["sugammadex"],antiemetic:["ondansetron","dexamethasone_ae"],adjuncts:["fentanyl_adj","ketorolac","acetaminophen_iv"],access:["piv","aline"],disposition:["floor"]},
+  "Cardiac / CABG":{anesthType:["general"],airway:["ett"],device:["direct_laryngo"],induction:["etomidate","fentanyl"],paralytic:["rocuronium"],maintenance:["combined_maint"],reversal:["sugammadex"],antiemetic:["ondansetron"],adjuncts:["fentanyl_adj"],access:["piv","aline","cvl"],monitors:["standard","aline_mon","tee"],disposition:["icu"]},
+  "Thoracic / VATS":{anesthType:["general"],airway:["dlt"],device:["fiberoptic"],induction:["propofol","fentanyl"],paralytic:["rocuronium"],maintenance:["sevo"],reversal:["sugammadex"],antiemetic:["ondansetron","dexamethasone_ae"],adjuncts:["fentanyl_adj","ketorolac"],access:["piv","aline"],monitors:["standard","aline_mon"],disposition:["floor"]},
+  "Neurosurgery / Craniotomy":{anesthType:["general"],airway:["ett"],device:["direct_laryngo"],induction:["propofol","fentanyl","lidocaine_iv"],paralytic:["rocuronium"],maintenance:["propofol_tiva"],reversal:["sugammadex"],antiemetic:["ondansetron","dexamethasone_ae"],adjuncts:["dexmed_adj"],access:["piv","aline"],monitors:["standard","aline_mon"],disposition:["icu"]},
+  "Spine":{anesthType:["general"],airway:["ett"],device:["direct_laryngo"],induction:["propofol","fentanyl"],paralytic:["rocuronium"],maintenance:["sevo"],reversal:["sugammadex"],antiemetic:["ondansetron","dexamethasone_ae"],adjuncts:["fentanyl_adj","ketorolac","acetaminophen_iv"],access:["piv"],disposition:["floor"]},
+  "Orthopedic / Joint":{anesthType:["spinal"],airway:["lma"],device:["direct_laryngo"],induction:["propofol"],paralytic:["none_paralytic"],maintenance:["propofol_tiva"],reversal:["none_reversal"],antiemetic:["ondansetron","dexamethasone_ae"],adjuncts:["ketorolac","acetaminophen_iv"],access:["piv"],disposition:["floor"]},
+  "OB / C-Section":{anesthType:["spinal"],airway:["mask"],device:["video_laryngo"],induction:["propofol","ketamine_ind"],paralytic:["succinylcholine"],maintenance:["sevo"],reversal:["sugammadex"],antiemetic:["ondansetron","dexamethasone_ae"],adjuncts:["acetaminophen_iv","ketorolac"],access:["piv"],disposition:["floor"]},
+  "ENT / Airway":{anesthType:["general"],airway:["ett"],device:["direct_laryngo"],induction:["propofol","fentanyl"],paralytic:["succinylcholine"],maintenance:["sevo"],reversal:["sugammadex"],antiemetic:["ondansetron","dexamethasone_ae"],adjuncts:["dexmed_adj"],access:["piv"],disposition:["outpatient"]},
+  "Pediatric":{anesthType:["general"],airway:["ett"],device:["direct_laryngo"],induction:["propofol","fentanyl"],paralytic:["succinylcholine"],maintenance:["sevo"],reversal:["sugammadex"],antiemetic:["ondansetron","dexamethasone_ae"],adjuncts:["acetaminophen_iv"],access:["piv"],disposition:["outpatient"]},
+  "Ambulatory / Day Surgery":{anesthType:["general"],airway:["lma"],device:["direct_laryngo"],induction:["propofol","fentanyl"],paralytic:["none_paralytic"],maintenance:["sevo"],reversal:["none_reversal"],antiemetic:["ondansetron","dexamethasone_ae"],adjuncts:["ketorolac","acetaminophen_iv"],access:["piv"],disposition:["outpatient"]},
+  "Trauma / Emergency":{anesthType:["general"],airway:["ett"],device:["video_laryngo"],induction:["ketamine_ind","fentanyl"],paralytic:["succinylcholine"],maintenance:["combined_maint"],reversal:["sugammadex"],antiemetic:["ondansetron"],adjuncts:["fentanyl_adj","ketamine_adj"],access:["piv","aline"],disposition:["icu"]},
+  "Urologic / Robotic":{anesthType:["general"],airway:["ett"],device:["direct_laryngo"],induction:["propofol","fentanyl"],paralytic:["rocuronium"],maintenance:["sevo"],reversal:["sugammadex"],antiemetic:["ondansetron","dexamethasone_ae"],adjuncts:["ketorolac","acetaminophen_iv"],access:["piv"],disposition:["outpatient"]},
+  "Endoscopy / Scope":{anesthType:["mac"],airway:["mask"],device:["direct_laryngo"],induction:["propofol"],paralytic:["none_paralytic"],maintenance:["propofol_tiva"],reversal:["none_reversal"],antiemetic:["ondansetron"],adjuncts:["fentanyl_adj"],access:["piv"],disposition:["outpatient"]},
+  "Ophthalmologic":{anesthType:["mac"],airway:["mask"],device:["direct_laryngo"],induction:["propofol"],paralytic:["none_paralytic"],maintenance:["propofol_tiva"],reversal:["none_reversal"],antiemetic:["ondansetron"],adjuncts:["acetaminophen_iv"],access:["piv"],disposition:["outpatient"]},
+};
+
+// ─── PLAN SECTION COMPONENT ─────────────────────────────────────────────────
+function PlanSection({label,items,pt,sp}){
+  const [open,setOpen]=useState(true);
+  const [expanded,setExpanded]=useState({});
+  const getId=(o)=>typeof o==="object"?o.id:o;
+  const getLabel=(o)=>typeof o==="object"?o.label:o;
+  const getBrand=(o)=>typeof o==="object"&&o.brand&&o.brand!=="—"?o.brand:null;
+  const getMoa=(o)=>typeof o==="object"?o.moa:null;
+  return(
+    <div style={{marginBottom:14}}>
+      <div className="section-head" style={{cursor:"pointer",userSelect:"none"}} onClick={()=>setOpen(o=>!o)}>
+        {label}<span style={{marginLeft:"auto",marginRight:0,fontSize:10,color:"var(--text3)",fontFamily:"var(--font-mono)",letterSpacing:0}}>{open?"▾":"▸"}</span>
+      </div>
+      {open&&items.map(({key,lbl})=>{
+        const phase=PHASES[key];if(!phase)return null;
+        const common=phase.common||[],advanced=phase.advanced||[];
+        const isSingle=!!phase.single;
+        const sel=pt[key]||[];
+        const showAdv=expanded[key];
+        const hasAdvSel=advanced.some(o=>sel.includes(getId(o)));
+        const toggle=(opt)=>{const id=getId(opt);if(isSingle){sp(key)(sel.includes(id)?[]:[id]);}else{sp(key)(sel.includes(id)?sel.filter(x=>x!==id):[...sel,id]);}};
+        const renderPill=(o,isAdv=false)=>{
+          const id=getId(o),lbl2=getLabel(o),brand=getBrand(o),moa=getMoa(o),on=sel.includes(id);
+          return(<div key={id} onClick={()=>toggle(o)}
+            style={{display:"inline-flex",flexDirection:"column",padding:"5px 10px",borderRadius:"var(--r)",
+              border:`1px solid ${on?"var(--cyan)":isAdv?"rgba(255,255,255,0.12)":"rgba(255,255,255,0.14)"}`,
+              background:on?"rgba(0,212,255,0.12)":isAdv?"rgba(255,255,255,0.02)":"rgba(255,255,255,0.03)",
+              cursor:"pointer",transition:"all 0.15s",borderStyle:isAdv&&!on?"dashed":"solid",marginBottom:4,marginRight:4}}>
+            <span style={{fontSize:12,fontWeight:600,color:on?"var(--cyan)":"var(--text)",fontFamily:"var(--font-body)",whiteSpace:"nowrap"}}>{lbl2}</span>
+            {(brand||moa)&&<span style={{fontSize:9.5,color:on?"rgba(0,212,255,0.7)":"var(--text3)",fontFamily:"var(--font-mono)",marginTop:1,lineHeight:1.3,whiteSpace:"nowrap"}}>{[brand,moa].filter(Boolean).join(" · ")}</span>}
+          </div>);
+        };
+        return(<div key={key} style={{marginBottom:10}}>
+          <label className="field-lbl">{lbl}</label>
+          <div style={{display:"flex",flexWrap:"wrap",gap:0}}>
+            {common.map(o=>renderPill(o,false))}
+            {advanced.length>0&&(<>
+              {showAdv&&advanced.map(o=>renderPill(o,true))}
+              <span onClick={()=>setExpanded(p=>({...p,[key]:!p[key]}))}
+                style={{display:"inline-flex",alignItems:"center",padding:"5px 10px",borderRadius:"var(--r)",fontSize:11,fontWeight:500,
+                  border:`1px dashed ${hasAdvSel&&!showAdv?"var(--amber)":"rgba(255,255,255,0.18)"}`,
+                  background:hasAdvSel&&!showAdv?"var(--amber2)":"rgba(255,255,255,0.02)",
+                  cursor:"pointer",color:hasAdvSel&&!showAdv?"var(--amber)":"var(--text3)",
+                  fontFamily:"var(--font-mono)",userSelect:"none",transition:"all 0.15s",marginBottom:4}}>
+                {showAdv?"− less":`+ ${advanced.length} more${hasAdvSel?" ●":""}`}
+              </span>
+            </>)}
+          </div>
+        </div>);
+      })}
+    </div>
+  );
+}
+
+// ─── DEFAULT PATIENT ────────────────────────────────────────────────────────
+const defaultPt={
+  name:"",ageSex:"",weight:"",height:"",nkda:true,allergies:"",procedure:"",indication:"",caseType:"",
+  pmhx:"",medications:"",smoker:false,priorAnesthesia:"",labs:"",asa:"",mallampati:"",mets:"",
+  premed:[],labsNeeded:[],access:[],abx:[],anesthType:[],airway:[],device:[],paralytic:[],
+  maintenance:[],induction:[],adjuncts:[],monitors:[],reversal:[],antiemetic:[],disposition:[],pacuOrders:[],
+  notes:"",regionalMode:false,opioidSparing:false,regionalBlocks:[],
+};
+
+// ─── PRE-OP PLANNER ──────────────────────────────────────────────────────────
+function PreOpPlanner({pt,setPt}){
+  const [output,setOutput]=useState("");
+  const [loading,setLoading]=useState(false);
+  const [streaming,setStreaming]=useState(false);
+  const [copied,setCopied]=useState(false);
+  const [view,setView]=useState("plan");
+  const [chkd,setChkd]=useState([]);
+  const s=(k,v)=>setPt(p=>({...p,[k]:v}));
+  const sp=(k)=>(v)=>setPt(p=>({...p,[k]:v}));
+
+  const checklistItems=output?output.split("\n").filter(l=>l.trim().match(/^[-•*]|^\d+\./)).map(l=>l.replace(/^[-•*]\s*|\d+\.\s*/,"")):[];
+  const togChk=(i)=>setChkd(p=>p.includes(i)?p.filter(x=>x!==i):[...p,i]);
+
+  const resolveIds=(ids,phaseKey)=>{
+    const phase=PHASES[phaseKey];if(!phase)return(ids||[]).join(", ");
+    const allDrugs=[...(phase.common||[]),...(phase.advanced||[])];
+    return(ids||[]).map(id=>{const d=allDrugs.find(o=>(typeof o==="object"?o.id:o)===id);if(!d)return id;if(typeof d==="string")return d;const brand=d.brand&&d.brand!=="—"?` (${d.brand})`:"";return `${d.label}${brand}`;}).join(", ")||"None";
+  };
+
+  const buildPrompt=()=>{
+    const regionalBlocks=(pt.regionalBlocks||[]);
+    const regionalSection=pt.regionalMode&&regionalBlocks.length>0
+      ?`\nREGIONAL ANESTHESIA PLAN:\n${regionalBlocks.map(b=>{const info=(REGIONAL_BY_CASE[pt.caseType]||[]).find(x=>x.name===b);return info?`  • ${b}: ${info.la} — ${info.timing} (${info.desc})`:`  • ${b}`;}).join("\n")}`
+      :pt.regionalMode?"\nREGIONAL MODE ON — no blocks selected yet; suggest appropriate blocks"
+      :"";
+    const opioidSection=pt.opioidSparing?`\nOPIOID-SPARING STRATEGY REQUESTED: Minimize/eliminate intraoperative and postoperative opioids. Prioritize multimodal analgesia: regional, NSAIDs, acetaminophen, ketamine, lidocaine infusion, dexmedetomidine.`:"";
+    return `You are an expert attending anesthesiologist. Write a concise, clinically precise pre-operative anesthesia plan for a CA1 resident. Use standard abbreviations. Real attending voice.
+
+PATIENT: ${pt.name||"Unknown"} | ${pt.ageSex||"?"} | Wt:${pt.weight||"?"}kg | Ht:${pt.height||"?"}cm
+NKDA: ${pt.nkda?"Yes":"No — Allergies: "+(pt.allergies||"?")} | Smoker: ${pt.smoker?"Yes":"No"}
+PROCEDURE: ${pt.procedure||"?"} — Indication: ${pt.indication||"?"}
+PMHx: ${pt.pmhx||"None"} | Meds: ${pt.medications||"None"}
+Prior Anesthesia: ${pt.priorAnesthesia||"None"} | Labs: ${pt.labs||"Pending"}
+ASA: ${pt.asa||"?"} | Mallampati: ${pt.mallampati||"?"} | METs: ${pt.mets||"?"}
+${regionalSection}${opioidSection}
+
+PLANNED:
+Pre-op: Premed: ${resolveIds(pt.premed,"premed")} | Labs: ${resolveIds(pt.labsNeeded,"labs")} | Access: ${resolveIds(pt.access,"access")} | ABx: ${resolveIds(pt.abx,"abx")}
+Intraop: Type: ${resolveIds(pt.anesthType,"anesthType")} | Airway: ${resolveIds(pt.airway,"airway")} via ${resolveIds(pt.device,"device")} | Induction: ${resolveIds(pt.induction,"induction")} | Paralytic: ${resolveIds(pt.paralytic,"paralytic")} | Maintenance: ${resolveIds(pt.maintenance,"maintenance")} | Adjuncts: ${resolveIds(pt.adjuncts,"adjuncts")} | Monitors: ${resolveIds(pt.monitors,"monitors")} | Reversal: ${resolveIds(pt.reversal,"reversal")} | Antiemetics: ${resolveIds(pt.antiemetic,"antiemetic")}
+Post-op: Disposition: ${resolveIds(pt.disposition,"disposition")} | PACU: ${resolveIds(pt.pacuOrders,"pacuOrders")}
+Notes: ${pt.notes||"None"}
+
+Write in these sections:
+1. PATIENT SUMMARY
+2. AIRWAY ASSESSMENT & PLAN
+3. PREOPERATIVE PHASE${pt.regionalMode?" (include regional block prep, consent, ultrasound/nerve stimulator setup)":""}
+4. INTRAOPERATIVE PHASE${pt.opioidSparing?" (detail opioid-sparing multimodal regimen explicitly)":""}
+5. POSTOPERATIVE PHASE
+6. KEY CONCERNS / SPECIAL CONSIDERATIONS
+Be terse, clinical, and direct.`;
+  };
+
+  const generate=async()=>{
+    setLoading(true);setOutput("");setStreaming(true);setView("plan");
+    try{
+      const r=await fetch("https://api.anthropic.com/v1/messages",{method:"POST",
+        headers:{"Content-Type":"application/json","x-api-key":getApiKey(),"anthropic-version":"2023-06-01","anthropic-dangerous-direct-browser-access":"true"},
+        body:JSON.stringify({model:"claude-sonnet-4-6",max_tokens:1400,stream:true,messages:[{role:"user",content:buildPrompt()}]})});
+      const reader=r.body.getReader();const dec=new TextDecoder();let buf="";
+      while(true){const{done,value}=await reader.read();if(done)break;
+        buf+=dec.decode(value,{stream:true});const lines=buf.split("\n");buf=lines.pop();
+        for(const l of lines){if(!l.startsWith("data: "))continue;const d=l.slice(6);if(d==="[DONE]")continue;
+          try{const j=JSON.parse(d);if(j.delta?.text)setOutput(p=>p+j.delta.text);}catch{}}}
+    }catch(e){setOutput("Error: "+e.message);}
+    setLoading(false);setStreaming(false);
+  };
+
+  return(
+    <div className="page">
+      <div className="page-title">Pre-Op Planner</div>
+      <div className="page-sub">// patient data · anesthesia plan · AI generation</div>
+      <div className="preop-grid" style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:24}}>
+        {/* LEFT: form */}
+        <div>
+          {/* Patient info */}
+          <div className="card gap" style={{marginBottom:16}}>
+            <div className="section-head">Patient Info</div>
+            <div className="g2 gap"><div><label className="field-lbl">Name</label><input placeholder="Last, First" value={pt.name} onChange={e=>s("name",e.target.value)}/></div>
+              <div><label className="field-lbl">Age / Sex</label><input placeholder="45M, 32F…" value={pt.ageSex} onChange={e=>s("ageSex",e.target.value)}/></div></div>
+            <div className="g2 gap"><div><label className="field-lbl">Weight (kg)</label><input type="number" placeholder="70" value={pt.weight} onChange={e=>s("weight",e.target.value)}/></div>
+              <div><label className="field-lbl">Height (cm)</label><input type="number" placeholder="170" value={pt.height} onChange={e=>s("height",e.target.value)}/></div></div>
+            <div className="gap">
+              <div className="toggle-row gap"><span className="toggle-lbl">NKDA</span><div className={`tog${pt.nkda?" on":""}`} onClick={()=>s("nkda",!pt.nkda)}/></div>
+              {!pt.nkda&&<textarea placeholder="Allergies & reactions…" value={pt.allergies} onChange={e=>s("allergies",e.target.value)} style={{minHeight:44,marginTop:6}}/>}
+            </div>
+            <div className="toggle-row"><span className="toggle-lbl">Active Smoker</span><div className={`tog${pt.smoker?" on":""}`} onClick={()=>s("smoker",!pt.smoker)}/></div>
+          </div>
+
+          {/* Case info */}
+          <div className="card gap" style={{marginBottom:16}}>
+            <div className="section-head">Case</div>
+            <div className="gap"><label className="field-lbl">Case Type</label>
+              <select value={pt.caseType} onChange={e=>{const ct=e.target.value;const def=CASE_DEFAULTS[ct]||{};setPt(p=>({...p,caseType:ct,...def}));}}>
+                <option value="">Select case type…</option>{CASE_TYPES.map(c=><option key={c} value={c}>{c}</option>)}
+              </select></div>
+            <div className="gap"><label className="field-lbl">Procedure</label><input placeholder="Laparoscopic cholecystectomy…" value={pt.procedure} onChange={e=>s("procedure",e.target.value)}/></div>
+            <div className="gap"><label className="field-lbl">Indication</label><input placeholder="Acute cholecystitis…" value={pt.indication} onChange={e=>s("indication",e.target.value)}/></div>
+          </div>
+
+          {/* Clinical */}
+          <div className="card gap" style={{marginBottom:16}}>
+            <div className="section-head">Clinical Details</div>
+            <div className="g2 gap"><div><label className="field-lbl">ASA Class</label>
+              <select value={pt.asa} onChange={e=>s("asa",e.target.value)}><option value="">—</option>{["I","II","III","IV","V","VI"].map(x=><option key={x}>{x}</option>)}</select></div>
+              <div><label className="field-lbl">Mallampati</label>
+              <select value={pt.mallampati} onChange={e=>s("mallampati",e.target.value)}><option value="">—</option>{["I","II","III","IV"].map(x=><option key={x}>{x}</option>)}</select></div></div>
+            <div className="gap"><label className="field-lbl">Functional Capacity (METs)</label>
+              <select value={pt.mets} onChange={e=>s("mets",e.target.value)}><option value="">—</option><option value="<4">&lt;4 METs (poor)</option><option value="4-7">4-7 METs (moderate)</option><option value=">7">&gt;7 METs (good)</option></select></div>
+            <div className="gap"><label className="field-lbl">PMHx / Comorbidities</label><textarea placeholder="HTN, DM2, OSA on CPAP, CAD s/p CABG…" value={pt.pmhx} onChange={e=>s("pmhx",e.target.value)}/></div>
+            <div className="gap"><label className="field-lbl">Current Medications</label><textarea placeholder="Metoprolol 25mg daily, Lisinopril…" value={pt.medications} onChange={e=>s("medications",e.target.value)}/></div>
+            <div className="gap"><label className="field-lbl">Prior Anesthesia / Issues</label><input placeholder="Difficult intubation 2019, PONV…" value={pt.priorAnesthesia} onChange={e=>s("priorAnesthesia",e.target.value)}/></div>
+            <div className="gap"><label className="field-lbl">Labs / Vitals</label><input placeholder="Na 138, K 4.1, Cr 1.0, Hgb 12, INR 1.0; HR 72, BP 130/80" value={pt.labs} onChange={e=>s("labs",e.target.value)}/></div>
+          </div>
+
+          {/* Anesthesia plan */}
+          <div className="card gap" style={{marginBottom:16}}>
+            <div className="section-head">Anesthesia Plan</div>
+            <div style={{display:"flex",gap:16,marginBottom:10,flexWrap:"wrap"}}>
+              <div className="toggle-row" style={{gap:8}}><span className="toggle-lbl" style={{fontSize:11}}>Regional Mode</span><div className={`tog${pt.regionalMode?" on":""}`} onClick={()=>s("regionalMode",!pt.regionalMode)}/></div>
+              <div className="toggle-row" style={{gap:8}}><span className="toggle-lbl" style={{fontSize:11}}>Opioid-Sparing</span><div className={`tog${pt.opioidSparing?" on":""}`} onClick={()=>s("opioidSparing",!pt.opioidSparing)}/></div>
+            </div>
+            {pt.regionalMode&&(REGIONAL_BY_CASE[pt.caseType]||[]).length>0&&(
+              <div style={{marginBottom:10}}>
+                <label className="field-lbl">Regional Blocks</label>
+                <div style={{display:"flex",flexWrap:"wrap",gap:4}}>
+                  {(REGIONAL_BY_CASE[pt.caseType]||[]).map(b=>{
+                    const on=(pt.regionalBlocks||[]).includes(b.name);
+                    return(<div key={b.name} onClick={()=>{const cur=pt.regionalBlocks||[];s("regionalBlocks",on?cur.filter(x=>x!==b.name):[...cur,b.name]);}}
+                      style={{padding:"6px 10px",borderRadius:"var(--r)",border:`1px solid ${on?"var(--purple)":"var(--border2)"}`,background:on?"var(--purple2)":"rgba(255,255,255,0.02)",cursor:"pointer",marginBottom:4}}>
+                      <div style={{fontSize:12,color:on?"var(--purple)":"var(--text)",fontWeight:600}}>{b.name}</div>
+                      <div style={{fontSize:10,color:"var(--text3)",fontFamily:"var(--font-mono)"}}>{b.la}</div>
+                    </div>);
+                  })}
+                </div>
+              </div>
+            )}
+            <PlanSection label="Pre-operative" items={[{key:"premed",lbl:"Premedication"},{key:"labsNeeded",lbl:"Labs Needed"},{key:"access",lbl:"Vascular Access"},{key:"abx",lbl:"Antibiotic Prophylaxis"}]} pt={pt} sp={sp}/>
+            <PlanSection label="Intraoperative" items={[{key:"anesthType",lbl:"Anesthesia Type"},{key:"airway",lbl:"Airway Device"},{key:"device",lbl:"Intubation Device"},{key:"induction",lbl:"Induction Agents"},{key:"paralytic",lbl:"Neuromuscular Blockade"},{key:"maintenance",lbl:"Maintenance"},{key:"adjuncts",lbl:"Adjuncts / Analgesia"},{key:"monitors",lbl:"Special Monitors"}]} pt={pt} sp={sp}/>
+            <PlanSection label="Post-operative" items={[{key:"reversal",lbl:"Reversal"},{key:"antiemetic",lbl:"Antiemetics"},{key:"disposition",lbl:"Disposition"},{key:"pacuOrders",lbl:"PACU Orders"}]} pt={pt} sp={sp}/>
+            <div style={{marginBottom:16}}><label className="field-lbl">Notes / Special Considerations</label><textarea style={{minHeight:56}} placeholder="Positioning concerns, surgeon requests, special equipment…" value={pt.notes} onChange={e=>s("notes",e.target.value)}/></div>
+            <button className="btn btn-primary" onClick={generate} disabled={loading} style={{width:"100%",padding:"13px"}}>
+              {loading?<><span className="dot-stream">Generating plan</span></>:"✦ Generate Pre-Op Plan"}
+            </button>
+          </div>
+        </div>
+
+        {/* RIGHT: output */}
+        <div style={{overflowY:"auto"}}>
+          {!output&&!loading&&(
+            <div style={{height:"50vh",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",color:"var(--text3)",gap:10}}>
+              <div style={{fontSize:48,opacity:0.2}}>📋</div>
+              <div style={{fontFamily:"var(--font-mono)",fontSize:13}}>Select case type → adjust → generate</div>
+              <div style={{fontSize:11,color:"var(--text3)"}}>Defaults auto-fill when you pick a case type</div>
+            </div>
+          )}
+          {(output||loading)&&(<>
+            <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:16,flexWrap:"wrap",gap:8}}>
+              <div>
+                <div style={{fontFamily:"var(--font-head)",fontSize:17,fontWeight:700}}>{pt.name||"Patient"} — Pre-Op Plan</div>
+                {pt.procedure&&<div style={{fontFamily:"var(--font-mono)",fontSize:11,color:"var(--text3)",marginTop:2}}>{pt.procedure}</div>}
+              </div>
+              {output&&<div style={{display:"flex",gap:6}}>
+                <div style={{display:"flex",gap:3,background:"var(--bg1)",border:"1px solid var(--border)",borderRadius:"var(--r)",padding:"4px"}}>
+                  {["plan","checklist"].map(t=><button key={t} className={`btn${view===t?" btn-primary":" btn-ghost"}`} style={{fontSize:11,padding:"5px 12px"}} onClick={()=>setView(t)}>{t}</button>)}
+                </div>
+                <button className="btn btn-ghost" onClick={()=>{navigator.clipboard.writeText(output);setCopied(true);setTimeout(()=>setCopied(false),2000);}} style={{fontSize:12}}>
+                  {copied?"✓ Copied":"⎘ Copy"}
+                </button>
+              </div>}
+            </div>
+            {view==="plan"&&<div className="plan-out">{output.replace(/\*\*(.*?)\*\*/g,"$1").replace(/#{1,3}\s/g,"")}{streaming&&<span className="blink-cur"/>}</div>}
+            {view==="checklist"&&!streaming&&(
+              <div>{checklistItems.map((item,i)=>(
+                <div key={i} className={`check-item${chkd.includes(i)?" done":""}`} onClick={()=>togChk(i)}>
+                  <div className="check-box">{chkd.includes(i)&&"✓"}</div>
+                  <div className="check-txt">{item}</div>
+                </div>
+              ))}</div>
+            )}
+          </>)}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── READINGS TAB ────────────────────────────────────────────────────────────
+function ReadingsTab({pt}){
+  const [extraCases,setExtraCases]=useState([]);
+  const [caseInput,setCaseInput]=useState("");
+  const [activeBook,setActiveBook]=useState("mm");
+  const [aiOutput,setAiOutput]=useState("");
+  const [aiLoading,setAiLoading]=useState(false);
+  const [aiStreaming,setAiStreaming]=useState(false);
+
+  const allCases=[...new Set([...(pt.caseType?[pt.caseType]:[]),...extraCases])];
+
+  const addCase=()=>{
+    if(caseInput&&!extraCases.includes(caseInput)){setExtraCases(p=>[...p,caseInput]);}
+    setCaseInput("");
+  };
+
+  const BOOK_INFO={
+    mm:{label:"M&M",full:"Morgan & Mikhail's Clinical Anesthesiology",edition:"6th ed."},
+    barash:{label:"Barash",full:"Barash's Clinical Anesthesia",edition:"9th ed."},
+    jaffe:{label:"Jaffe AMSP",full:"Anesthesiologist's Manual of Surgical Procedures",edition:"6th ed."},
+    toolbox:{label:"ASA Toolbox",full:"ASA Anesthesia Toolbox",edition:"Online"},
+  };
+
+  const getChapters=(book)=>{
+    if(book==="toolbox")return[];
+    const result=[],seen=new Set();
+    const add=(ch,src)=>{const key=ch.ch||ch.title;if(!seen.has(key)){seen.add(key);result.push({...ch,src});}};
+    (RDB.core?.[book]||[]).forEach(ch=>add(ch,"Foundation"));
+    allCases.forEach(ct=>{(RDB[ct]?.[book]||[]).forEach(ch=>add(ch,ct));});
+    // comorbidity triggers
+    const pmhx=(pt.pmhx||"").toLowerCase()+(" "+(pt.medications||"")).toLowerCase();
+    const checks=[
+      {re:/cardiac|heart failure|chf|cad|mi\b|coronary|angina|valve|ef\b|af\b/,key:"cardiac",lbl:"Cardiac comorbidity"},
+      {re:/renal|kidney|ckd|esrd|dialysis|creatinine/,key:"renal",lbl:"Renal comorbidity"},
+      {re:/hepat|liver|cirrhosis|fibrosis|esld|ascites/,key:"hepatic",lbl:"Hepatic comorbidity"},
+      {re:/copd|asthma|emphys|pulmon|bronchi|obstructive/,key:"pulmonary",lbl:"Pulmonary comorbidity"},
+      {re:/diabet|dm\b|insulin|a1c|glucose/,key:"endocrine",lbl:"Endocrine comorbidity"},
+      {re:/epilepsy|seizure|parkinson|myasthenia|ams|dementia/,key:"neurologic",lbl:"Neurologic comorbidity"},
+      {re:/coagulop|bleeding|plt|hemophilia|warfarin|coumadin|eliquis|xarelto|plavix/,key:"coagulopathy",lbl:"Coagulation concern"},
+      {re:/obes|bmi|bariatric|morbid/,key:"obesity",lbl:"Obesity"},
+    ];
+    checks.forEach(({re,key,lbl})=>{if(re.test(pmhx))(COMORBIDITY_DB[key]?.[book]||[]).forEach(ch=>add(ch,lbl));});
+    return result.sort((a,b)=>({high:0,med:1,low:2}[a.yield]||1)-({high:0,med:1,low:2}[b.yield]||1));
+  };
+
+  const getBoardTopics=()=>{
+    const out=[];
+    allCases.forEach(ct=>{(RDB[ct]?.boards||[]).forEach(t=>out.push({topic:t,case:ct}));});
+    return out;
+  };
+
+  const generateAI=async()=>{
+    setAiLoading(true);setAiOutput("");setAiStreaming(true);
+    const chapters=getChapters(activeBook);
+    const boardTopics=getBoardTopics();
+    const prompt=`You are a senior anesthesiologist helping a CA1 resident prep for boards and tomorrow's cases. Generate a HIGH-YIELD, ABA BASIC EXAM-FOCUSED study guide.
+
+TODAY'S CASES: ${allCases.join(", ")||"General"}
+PATIENT: ${pt.name||"Unknown"} | ${pt.ageSex||"?"} | PMHx: ${pt.pmhx||"None"} | Meds: ${pt.medications||"None"}
+PROCEDURE: ${pt.procedure||"TBD"} | ASA: ${pt.asa||"?"}
+
+KEY BOARD TOPICS FOR TODAY'S CASES:
+${boardTopics.map(t=>`- ${t.topic} [${t.case}]`).join("\n")||"- General anesthesia principles"}
+
+For EACH case type today, generate:
+1. TOP 5-7 HIGH-YIELD CONCEPTS (board-style, what's most commonly tested)
+2. Key numbers/formulas to know cold
+3. One CLASSIC BOARD SCENARIO per case (brief setup + teaching point)
+4. Comorbidity-specific anesthetic implications for THIS patient
+5. "DON'T MISS" list: 3-4 critical items for tomorrow
+
+Be concise, exam-focused. Format with clear headers. Target ABA BASIC exam level.`;
+    try{
+      const r=await fetch("https://api.anthropic.com/v1/messages",{method:"POST",
+        headers:{"Content-Type":"application/json","x-api-key":getApiKey(),"anthropic-version":"2023-06-01","anthropic-dangerous-direct-browser-access":"true"},
+        body:JSON.stringify({model:"claude-sonnet-4-6",max_tokens:1800,stream:true,messages:[{role:"user",content:prompt}]})});
+      const reader=r.body.getReader();const dec=new TextDecoder();let buf="";
+      while(true){const{done,value}=await reader.read();if(done)break;
+        buf+=dec.decode(value,{stream:true});const lines=buf.split("\n");buf=lines.pop();
+        for(const l of lines){if(!l.startsWith("data: "))continue;const d=l.slice(6);if(d==="[DONE]")continue;
+          try{const j=JSON.parse(d);if(j.delta?.text)setAiOutput(p=>p+j.delta.text);}catch{}}}
+    }catch(e){setAiOutput("Error: "+e.message);}
+    setAiLoading(false);setAiStreaming(false);
+  };
+
+  const yieldInfo=(y)=>y==="high"?{icon:"⭐",label:"High Yield",color:"var(--cyan)"}:y==="med"?{icon:"◉",label:"Med Yield",color:"var(--amber)"}:{icon:"◯",label:"Background",color:"var(--text3)"};
+  const chapters=getChapters(activeBook);
+  const boardTopics=getBoardTopics();
+  const toolboxItems=allCases.flatMap(ct=>(RDB[ct]?.toolbox||[]).map(t=>({...t,case:ct})));
+
+  return(
+    <div className="page">
+      <div className="page-title">Reading Recommendations</div>
+      <div className="page-sub">// textbook chapters · board exam focus · AI study guide</div>
+
+      {/* Today's Cases */}
+      <div className="card gap" style={{marginBottom:16}}>
+        <div className="section-head">Today's Cases</div>
+        {allCases.length===0&&<div style={{color:"var(--text3)",fontFamily:"var(--font-mono)",fontSize:12,marginBottom:10}}>No cases loaded — set case type in Pre-Op Planner or add cases below</div>}
+        <div style={{display:"flex",flexWrap:"wrap",gap:8,marginBottom:12}}>
+          {allCases.map(c=>(
+            <span key={c} style={{display:"flex",alignItems:"center",gap:6,padding:"5px 12px",background:"var(--cyan2)",border:"1px solid var(--cyan)",borderRadius:"var(--r)",fontSize:12,color:"var(--cyan)",fontFamily:"var(--font-mono)"}}>
+              {c}
+              {c===pt.caseType?<span style={{fontSize:9,opacity:0.6}}>auto</span>:<span onClick={()=>setExtraCases(p=>p.filter(x=>x!==c))} style={{cursor:"pointer",opacity:0.7,fontSize:14,lineHeight:1}}>×</span>}
+            </span>
+          ))}
+        </div>
+        <div style={{display:"flex",gap:8}}>
+          <select value={caseInput} onChange={e=>setCaseInput(e.target.value)} style={{flex:1}}>
+            <option value="">+ Add another case for today…</option>
+            {CASE_TYPES.filter(c=>!allCases.includes(c)).map(c=><option key={c} value={c}>{c}</option>)}
+          </select>
+          <button className="btn btn-ghost" onClick={addCase} disabled={!caseInput} style={{fontSize:12,padding:"8px 16px",flexShrink:0}}>Add</button>
+        </div>
+      </div>
+
+      {/* Board Exam Topics */}
+      {boardTopics.length>0&&(
+        <div className="card gap" style={{marginBottom:16,background:"rgba(0,212,255,0.02)",borderColor:"rgba(0,212,255,0.2)"}}>
+          <div className="section-head">ABA Board Focus — Today's Cases</div>
+          <div style={{display:"flex",flexWrap:"wrap",gap:5}}>
+            {boardTopics.map((t,i)=>(
+              <span key={i} style={{padding:"4px 10px",border:"1px solid rgba(0,212,255,0.2)",borderRadius:20,fontSize:11,color:"var(--text2)",fontFamily:"var(--font-mono)",background:"rgba(0,212,255,0.04)"}}>
+                {t.topic}
+              </span>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Book selector */}
+      <div style={{display:"flex",gap:6,flexWrap:"wrap",marginBottom:16}}>
+        {Object.entries(BOOK_INFO).map(([id,b])=>(
+          <button key={id} onClick={()=>setActiveBook(id)} className={`btn ${activeBook===id?"btn-primary":"btn-ghost"}`} style={{fontSize:12,padding:"8px 18px"}}>{b.label}</button>
+        ))}
+      </div>
+
+      {/* Book header */}
+      <div style={{marginBottom:16}}>
+        <div style={{fontFamily:"var(--font-head)",fontSize:15,fontWeight:700}}>{BOOK_INFO[activeBook]?.full}</div>
+        <div style={{fontFamily:"var(--font-mono)",fontSize:10,color:"var(--text3)",marginTop:2}}>
+          {BOOK_INFO[activeBook]?.edition}
+          {activeBook!=="toolbox"&&` · ${chapters.length} chapter${chapters.length!==1?"s":""} recommended`}
+        </div>
+      </div>
+
+      {/* ASA Toolbox special view */}
+      {activeBook==="toolbox"&&(
+        <div className="card" style={{textAlign:"center",padding:32}}>
+          <div style={{fontSize:40,marginBottom:12}}>🔗</div>
+          <div style={{fontFamily:"var(--font-head)",fontSize:17,fontWeight:700,marginBottom:8}}>ASA Anesthesia Toolbox</div>
+          <div style={{color:"var(--text2)",fontSize:13,marginBottom:20,lineHeight:1.7}}>Free clinical reference resources for anesthesiologists.<br/>Access through your ASA member account.</div>
+          {toolboxItems.length>0&&(<>
+            <div style={{fontFamily:"var(--font-mono)",fontSize:11,color:"var(--text3)",marginBottom:12}}>Recommended Toolbox searches for today's cases:</div>
+            <div style={{display:"flex",flexWrap:"wrap",gap:8,justifyContent:"center",marginBottom:24}}>
+              {toolboxItems.map((t,i)=>(
+                <div key={i} style={{padding:"8px 14px",background:"var(--cyan2)",border:"1px solid rgba(0,212,255,0.3)",borderRadius:"var(--r)",fontSize:12,color:"var(--cyan)",fontFamily:"var(--font-mono)",textAlign:"left"}}>
+                  <div style={{fontWeight:600}}>{t.title}</div>
+                  <div style={{fontSize:10,opacity:0.7,marginTop:2}}>{t.tag}</div>
+                </div>
+              ))}
+            </div>
+          </>)}
+          <a href="https://www.asahq.org/education-and-career/learning-education/toolbox" target="_blank" rel="noreferrer"
+            style={{display:"inline-flex",alignItems:"center",gap:8,padding:"11px 28px",background:"linear-gradient(135deg,var(--cyan),#4f46e5)",borderRadius:"var(--r)",color:"white",fontSize:14,fontWeight:600,textDecoration:"none"}}>
+            Open ASA Toolbox →
+          </a>
+        </div>
+      )}
+
+      {/* Chapter cards */}
+      {activeBook!=="toolbox"&&(<>
+        {chapters.length===0&&allCases.length===0&&(
+          <div className="card" style={{textAlign:"center",padding:40}}>
+            <div style={{fontSize:32,marginBottom:8,opacity:0.3}}>📚</div>
+            <div style={{color:"var(--text3)",fontFamily:"var(--font-mono)",fontSize:12}}>Add cases above to get personalized chapter recommendations</div>
+          </div>
+        )}
+        {chapters.length===0&&allCases.length>0&&(
+          <div className="card" style={{textAlign:"center",padding:32}}>
+            <div style={{color:"var(--text3)",fontFamily:"var(--font-mono)",fontSize:12}}>No chapters mapped for these cases in this book yet.</div>
+          </div>
+        )}
+        {chapters.map((ch,i)=>{
+          const yi=yieldInfo(ch.yield);
+          return(
+            <div key={i} className={`reading-card ${ch.yield}`}>
+              <div style={{display:"flex",alignItems:"flex-start",justifyContent:"space-between",gap:12,marginBottom:6}}>
+                <div style={{flex:1}}>
+                  <div style={{display:"flex",alignItems:"center",flexWrap:"wrap",gap:6,marginBottom:5}}>
+                    <span className="ch-badge">{ch.ch}</span>
+                    <span style={{fontFamily:"var(--font-head)",fontSize:14,fontWeight:700,color:"var(--text)"}}>{ch.title}</span>
+                  </div>
+                  {ch.why&&<div style={{fontSize:12,color:"var(--text2)",lineHeight:1.55}}>{ch.why}</div>}
+                </div>
+                <span style={{fontFamily:"var(--font-mono)",fontSize:10,color:yi.color,flexShrink:0,marginTop:2,whiteSpace:"nowrap"}}>{yi.icon} {yi.label}</span>
+              </div>
+              <div style={{display:"flex",flexWrap:"wrap",gap:4,marginTop:8}}>
+                <span className="source-tag">📌 {ch.src}</span>
+                {(ch.board||[]).map((b,bi)=><span key={bi} className="board-tag">{b}</span>)}
+              </div>
+            </div>
+          );
+        })}
+      </>)}
+
+      {/* AI Study Guide */}
+      {allCases.length>0&&(
+        <div className="card" style={{marginTop:20,borderColor:"rgba(167,139,250,0.25)"}}>
+          <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:14,flexWrap:"wrap",gap:10}}>
+            <div>
+              <div className="section-head" style={{marginBottom:2}}>AI Board-Focused Study Guide</div>
+              <div style={{fontFamily:"var(--font-mono)",fontSize:10,color:"var(--text3)"}}>ABA BASIC exam focus · tailored to today's cases + patient comorbidities</div>
+            </div>
+            <button className="btn btn-primary" onClick={generateAI} disabled={aiLoading} style={{fontSize:12,padding:"9px 18px",flexShrink:0,background:"linear-gradient(135deg,var(--purple),#4f46e5)"}}>
+              {aiLoading?<span className="dot-stream">Generating</span>:"📖 Generate Study Guide"}
+            </button>
+          </div>
+          {!aiOutput&&!aiLoading&&(
+            <div style={{textAlign:"center",padding:"28px 0",color:"var(--text3)",fontFamily:"var(--font-mono)",fontSize:11,lineHeight:1.7}}>
+              Click to generate board-focused notes tailored to today's cases<br/>
+              <span style={{fontSize:10,opacity:0.6}}>Includes classic board scenarios + key numbers + don't-miss items</span>
+            </div>
+          )}
+          {(aiOutput||aiLoading)&&(
+            <div className="plan-out" style={{fontSize:12.5}}>
+              {aiOutput.replace(/\*\*(.*?)\*\*/g,"$1").replace(/#{1,3}\s/g,"")}
+              {aiStreaming&&<span className="blink-cur"/>}
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ─── ROOT APP ────────────────────────────────────────────────────────────────
+const TABS=[
+  {id:"preop",label:"Pre-Op",icon:"📋"},
+  {id:"risk",label:"Risk",icon:"⚡"},
+  {id:"drugs",label:"Drugs",icon:"💊"},
+  {id:"setup",label:"OR Setup",icon:"🏥"},
+  {id:"readings",label:"Readings",icon:"📚"},
+];
+
+function App(){
+  const [tab,setTab]=useState("preop");
+  const [pt,setPt]=useState(defaultPt);
+
+  const tabClick=(id)=>{setTab(id);window.scrollTo(0,0);};
+
+  return(
+    <>
+      <style>{FONTS}{CSS}</style>
+      <div className="app">
+        {/* ── DESKTOP TOP NAV ── */}
+        <nav className="nav">
+          <div className="nav-logo">
+            <div className="nav-logo-icon">🫁</div>
+            <div><h1>AnesFlow</h1><span>CA1 Workflow Suite</span></div>
+          </div>
+          <div className="nav-tabs">
+            {TABS.map(t=>(
+              <button key={t.id} className={`nav-tab${tab===t.id?" active":""}`} onClick={()=>tabClick(t.id)}>
+                <span className="nav-tab-icon">{t.icon}</span>{t.label}
+                {t.id==="risk"&&pt.asa&&<span className="nav-badge">ASA {pt.asa}</span>}
+                {t.id==="drugs"&&pt.weight&&<span className="nav-badge">{pt.weight}kg</span>}
+                {t.id==="setup"&&pt.caseType&&<span className="nav-badge">{pt.caseType.split(" ")[0]}</span>}
+                {t.id==="readings"&&pt.caseType&&<span className="nav-badge">{pt.caseType.split(" / ")[0].split(" ")[0]}</span>}
+              </button>
+            ))}
+          </div>
+          {pt.name&&(
+            <div style={{padding:"8px 16px",borderLeft:"1px solid var(--border)",flexShrink:0,display:"flex",alignItems:"center",gap:10}}>
+              <div style={{width:28,height:28,borderRadius:"50%",background:"var(--cyan2)",border:"1px solid var(--cyan)",display:"flex",alignItems:"center",justifyContent:"center",fontFamily:"var(--font-mono)",fontSize:11,color:"var(--cyan)"}}>
+                {pt.name[0]}
+              </div>
+              <div>
+                <div style={{fontFamily:"var(--font-mono)",fontSize:11,color:"var(--text)"}}>{pt.name}</div>
+                <div style={{fontFamily:"var(--font-mono)",fontSize:9,color:"var(--text3)"}}>{pt.procedure||"No procedure"}</div>
+              </div>
+            </div>
+          )}
+          <button onClick={()=>{localStorage.removeItem("anesflow_api_key");ANTHROPIC_API_KEY="";window.location.reload();}}
+            title="Change API Key"
+            style={{marginLeft:"auto",padding:"6px 12px",background:"rgba(255,255,255,0.04)",border:"1px solid rgba(255,255,255,0.1)",borderRadius:6,color:"#4a5a7a",fontSize:10,cursor:"pointer",fontFamily:"monospace",flexShrink:0}}>
+            🔑 API Key
+          </button>
+        </nav>
+
+        {/* ── CONTENT ── */}
+        <div className="content">
+          {/* Patient context strip — mobile only */}
+          {pt.name&&(
+            <div style={{display:"none"}} className="mobile-pt-strip">
+              <span style={{fontFamily:"var(--font-mono)",fontSize:11,color:"var(--cyan)"}}>{pt.name}</span>
+              {pt.caseType&&<span style={{fontFamily:"var(--font-mono)",fontSize:10,color:"var(--text3)",marginLeft:8}}>{pt.caseType}</span>}
+            </div>
+          )}
+          {tab==="preop"&&<PreOpPlanner pt={pt} setPt={setPt}/>}
+          {tab==="risk"&&<RiskStratifier pt={pt} setPt={setPt}/>}
+          {tab==="drugs"&&<DrugCalc pt={pt}/>}
+          {tab==="setup"&&<ORSetup pt={pt} setPt={setPt}/>}
+          {tab==="readings"&&<ReadingsTab pt={pt}/>}
+        </div>
+
+        {/* ── MOBILE BOTTOM NAV ── */}
+        <nav className="bottom-nav">
+          <div className="bottom-nav-inner">
+            {TABS.map(t=>(
+              <button key={t.id} className={`bn-btn${tab===t.id?" active":""}`} onClick={()=>tabClick(t.id)}>
+                <span className="bn-btn-icon">{t.icon}</span>
+                <span>{t.label}</span>
+                {t.id==="risk"&&pt.asa&&<span className="bn-badge">ASA{pt.asa}</span>}
+                {t.id==="drugs"&&pt.weight&&<span className="bn-badge">{pt.weight}kg</span>}
+              </button>
+            ))}
+          </div>
+        </nav>
+      </div>
+    </>
+  );
+}
+
+function AppWithKeyGate(){
+  const [hasKey,setHasKey]=useState(!!localStorage.getItem("anesflow_api_key"));
+  if(!hasKey)return <ApiKeyGate onSave={()=>setHasKey(true)}/>;
+  return <App/>;
+}
+
+const root=ReactDOM.createRoot(document.getElementById("root"));
+root.render(React.createElement(AppWithKeyGate));
+  </script>
+
+  <script>
+    if('serviceWorker' in navigator){
+      window.addEventListener('load',function(){
+        navigator.serviceWorker.register('/sw.js')
+          .then(r=>console.log('AnesFlow SW registered:',r.scope))
+          .catch(e=>console.warn('SW failed:',e));
+      });
+    }
+  </script>
+</body>
+</html>
